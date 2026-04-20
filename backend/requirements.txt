@@ -1,2 +1,14 @@
+aiosqlite
+asyncpg
+celery
 fastapi
+ffmpeg-python
+imagehash
+librosa
+numpy
+Pillow
+pymilvus
+pytest
+pytest-asyncio
+sqlalchemy
 uvicorn[standard]

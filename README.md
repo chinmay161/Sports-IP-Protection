@@ -10,16 +10,56 @@ Basic setup and run instructions for the current monorepo, plus the proposed tar
 
 ## Quick Start
 
-### 1. Backend (FastAPI)
+### 1. Backend (FastAPI + Celery + Milvus)
 
-From the repository root:
+Copy the repo-level example env file and adjust values for your machine:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+The backend reads these environment variables:
+
+- `DATABASE_URL`
+- `CELERY_BROKER_URL`
+- `CELERY_RESULT_BACKEND`
+- `MILVUS_URI`
+- `MILVUS_TOKEN`
+- `MILVUS_COLLECTION_NAME`
+- `TEMP_ROOT`
+
+Local defaults in `.env.example` use SQLite for quick startup. For a Postgres setup, replace `DATABASE_URL` with an async SQLAlchemy DSN such as `postgresql+asyncpg://postgres:postgres@localhost:5432/sports_ip`.
+
+Required local services:
+
+- `ffmpeg` installed and available on `PATH`
+- Redis running for Celery broker/result storage
+- Milvus running at `MILVUS_URI`
+
+Run the API from the repository root:
 
 ```powershell
 cd backend
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
-uvicorn main:app --reload
+uvicorn app.main:app --reload
+```
+
+Run the Celery worker in a second terminal:
+
+```powershell
+cd backend
+.venv\Scripts\activate
+celery -A app.workers.ingest_task.celery_app worker --loglevel=info
+```
+
+Run backend tests:
+
+```powershell
+cd backend
+.venv\Scripts\activate
+pytest -q tests/test_fingerprint.py
 ```
 
 Backend URLs:
