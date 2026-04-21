@@ -26,6 +26,7 @@ The backend reads these environment variables:
 - `MILVUS_URI`
 - `MILVUS_TOKEN`
 - `MILVUS_COLLECTION_NAME`
+- `MILVUS_REQUIRED`
 - `TEMP_ROOT`
 
 Local defaults in `.env.example` use SQLite for quick startup. For a Postgres setup, replace `DATABASE_URL` with an async SQLAlchemy DSN such as `postgresql+asyncpg://postgres:postgres@localhost:5432/sports_ip`.
@@ -34,7 +35,17 @@ Required local services:
 
 - `ffmpeg` installed and available on `PATH`
 - Redis running for Celery broker/result storage
-- Milvus running at `MILVUS_URI`
+- Milvus running at `MILVUS_URI` for fingerprint operations
+
+If you want the API to boot without Milvus during local development, leave `MILVUS_REQUIRED=false`. In that mode `/health` reports a degraded state until Milvus is reachable.
+
+You can start Redis and a complete Milvus stack from the repository root with:
+
+```powershell
+docker compose up -d
+```
+
+This compose file includes `redis`, `etcd`, `minio`, and `milvus`, which avoids the Milvus crash caused by missing object storage.
 
 Run the API from the repository root:
 

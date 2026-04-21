@@ -8,6 +8,7 @@ librosa
 numpy
 Pillow
 pymilvus
+redis
 pytest
 pytest-asyncio
 sqlalchemy

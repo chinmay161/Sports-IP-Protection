@@ -15,6 +15,7 @@ except ImportError:  # pragma: no cover - exercised only when dependency is abse
 
 
 settings = get_settings()
+HASH_VECTOR_INDEX_PARAMS = {"index_type": "BIN_FLAT", "metric_type": "HAMMING", "params": {}}
 
 
 def _connect() -> None:
@@ -54,12 +55,15 @@ def _ensure_collection_sync() -> None:
             description="Perceptual video and audio fingerprints",
         )
         collection = Collection(name=settings.milvus_collection_name, schema=schema)
-        collection.create_index(
-            field_name="hash_vector",
-            index_params={"index_type": "FLAT", "metric_type": "HAMMING", "params": {}},
-        )
     else:
         collection = Collection(settings.milvus_collection_name)
+
+    if not collection.has_index(index_name="hash_vector"):
+        collection.create_index(
+            field_name="hash_vector",
+            index_params=HASH_VECTOR_INDEX_PARAMS,
+            index_name="hash_vector",
+        )
 
     collection.load()
 
@@ -67,4 +71,3 @@ def _ensure_collection_sync() -> None:
 async def ensure_collection() -> None:
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, _ensure_collection_sync)
-
