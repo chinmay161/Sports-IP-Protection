@@ -1,7 +1,8 @@
-from functools import lru_cache
+# app/core/config.py
 import os
-from pathlib import Path
 from dataclasses import dataclass
+from functools import lru_cache
+from pathlib import Path
 
 
 @dataclass(slots=True)

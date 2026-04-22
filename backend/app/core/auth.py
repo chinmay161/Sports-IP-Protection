@@ -3,9 +3,12 @@ import os
 from typing import Annotated
 
 import httpx
+from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
+
+load_dotenv()
 
 AUTH0_DOMAIN = os.getenv("AUTH0_DOMAIN", "")
 AUTH0_AUDIENCE = os.getenv("AUTH0_AUDIENCE", "")
@@ -15,6 +18,8 @@ bearer_scheme = HTTPBearer()
 
 
 async def _get_jwks() -> dict:
+    if not AUTH0_DOMAIN:
+        raise RuntimeError("AUTH0_DOMAIN is not set in .env")
     url = f"https://{AUTH0_DOMAIN}/.well-known/jwks.json"
     async with httpx.AsyncClient() as client:
         response = await client.get(url)
