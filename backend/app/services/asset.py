@@ -6,11 +6,8 @@ from fastapi import UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.core.config import get_settings
 from app.models.asset import Asset
 from app.schemas.asset import AssetCreate
-
-settings = get_settings()
 
 
 async def register_asset(

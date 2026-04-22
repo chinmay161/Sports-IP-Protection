@@ -28,15 +28,18 @@ class Asset(Base):
     )
 
 '''
-
 # app/models/asset.py
 import uuid
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, String, Text, func
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+
+if TYPE_CHECKING:
+    from app.models.alert import Alert
 
 
 class Asset(Base):
@@ -54,4 +57,8 @@ class Asset(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    alerts: Mapped[list["Alert"]] = relationship(
+        "Alert", back_populates="asset", cascade="all, delete-orphan"
     )
