@@ -47,3 +47,16 @@ async def get_asset(db: AsyncSession, asset_id: str) -> Asset | None:
 async def list_assets(db: AsyncSession, skip: int = 0, limit: int = 20) -> list[Asset]:
     result = await db.execute(select(Asset).offset(skip).limit(limit))
     return list(result.scalars().all())
+
+
+def refresh_aggregate_status(asset: Asset) -> None:
+    fingerprint_status = getattr(asset, "fingerprint_status", "pending")
+    watermark_status = getattr(asset, "watermark_status", "pending")
+    if fingerprint_status == "ready" and watermark_status == "ready":
+        asset.status = "ready"
+    elif fingerprint_status == "failed" or watermark_status == "failed":
+        asset.status = "failed"
+    elif fingerprint_status == "processing" or watermark_status == "processing":
+        asset.status = "processing"
+    else:
+        asset.status = "pending"

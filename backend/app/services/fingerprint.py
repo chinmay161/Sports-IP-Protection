@@ -98,9 +98,14 @@ class FingerprintService:
         executor: Executor | None = None,
     ) -> None:
         self.settings = get_settings()
-        self.collection = collection if collection is not None else get_collection()
+        self.collection = collection
         self.logger = logger if logger is not None else LOGGER
         self.executor = executor
+
+    def _get_collection(self) -> Any:
+        if self.collection is None:
+            self.collection = get_collection()
+        return self.collection
 
     async def generate(self, video_path: str, asset_id: UUID) -> FingerprintResult:
         start_time = time.perf_counter()
@@ -185,8 +190,9 @@ class FingerprintService:
 
     async def delete(self, asset_id: UUID) -> None:
         expression = f'asset_id == "{asset_id}"'
-        await self._run_blocking(self.collection.delete, expression)
-        await self._run_blocking(self.collection.flush)
+        collection = self._get_collection()
+        await self._run_blocking(collection.delete, expression)
+        await self._run_blocking(collection.flush)
 
     async def _extract_fingerprints(
         self,
@@ -351,8 +357,9 @@ class FingerprintService:
         if not entities["asset_id"]:
             return
 
-        await self._run_blocking(self.collection.insert, entities)
-        await self._run_blocking(self.collection.flush)
+        collection = self._get_collection()
+        await self._run_blocking(collection.insert, entities)
+        await self._run_blocking(collection.flush)
 
     async def _search_vectors(
         self,
@@ -360,9 +367,10 @@ class FingerprintService:
         threshold: int,
     ) -> dict[str, list[MatchPoint]]:
         matches_by_asset: dict[str, list[MatchPoint]] = {}
+        collection = self._get_collection()
         for vector in vectors:
             search_hits = await self._run_blocking(
-                self.collection.search,
+                collection.search,
                 data=[vector.vector],
                 anns_field="hash_vector",
                 param={"metric_type": "HAMMING", "params": {}},

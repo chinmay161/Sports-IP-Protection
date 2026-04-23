@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.core.config import get_settings
-from app.api.assets import router as assets_router
+from app.api.assets import detections_router, router as assets_router
 from app.api.alerts import router as alerts_router
 from app.db.milvus import ensure_collection
 from app.db.session import init_db
@@ -35,6 +35,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Sports IP Protection API", lifespan=lifespan)
 app.include_router(assets_router)
+app.include_router(detections_router)
 app.include_router(alerts_router)
 
 

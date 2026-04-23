@@ -1,10 +1,12 @@
 import asyncio
 import logging
+import sys
 from uuid import UUID
 
 from app.core.config import get_settings
 from app.db.session import SessionLocal
 from app.models.asset import Asset
+from app.services.asset import refresh_aggregate_status
 from app.services.fingerprint import FingerprintService
 
 try:
@@ -35,6 +37,9 @@ celery_app = Celery(
     backend=settings.celery_result_backend,
 )
 
+if sys.platform.startswith("win"):
+    celery_app.conf.update(worker_pool="solo", worker_concurrency=1)
+
 
 class TransientIngestError(Exception):
     """Retryable ingest error."""
@@ -59,21 +64,52 @@ async def _ingest_asset_impl(asset_id: str, video_path: str) -> dict[str, str]:
         if asset is None:
             raise ValueError(f"Asset {asset_id} not found")
 
-        asset.status = "processing"
+        if hasattr(asset, "fingerprint_status"):
+            asset.fingerprint_status = "processing"
+            refresh_aggregate_status(asset)
+        else:
+            asset.status = "processing"
         await session.commit()
 
         try:
             await service.generate(video_path=video_path, asset_id=UUID(asset_id))
         except (OSError, ConnectionError, TimeoutError) as exc:
-            asset.status = "failed"
+            if hasattr(asset, "fingerprint_status"):
+                asset.fingerprint_status = "failed"
+                refresh_aggregate_status(asset)
+            else:
+                asset.status = "failed"
             await session.commit()
             raise TransientIngestError(str(exc)) from exc
         except Exception:
             logger.exception("fingerprint_ingest_failed asset_id=%s", asset_id)
-            asset.status = "failed"
+            if hasattr(asset, "fingerprint_status"):
+                asset.fingerprint_status = "failed"
+                refresh_aggregate_status(asset)
+            else:
+                asset.status = "failed"
             await session.commit()
             raise
 
-        asset.status = "ready"
+        if hasattr(asset, "fingerprint_status"):
+            asset.fingerprint_status = "ready"
+            refresh_aggregate_status(asset)
+        else:
+            asset.status = "ready"
         await session.commit()
-        return {"asset_id": asset_id, "status": "ready"}
+        return {"asset_id": asset_id, "status": asset.status}
+
+
+@celery_app.task
+def finalize_asset(results: list[dict[str, str]], asset_id: str) -> dict[str, str]:
+    return asyncio.run(_finalize_asset_impl(asset_id=asset_id))
+
+
+async def _finalize_asset_impl(asset_id: str) -> dict[str, str]:
+    async with SessionLocal() as session:
+        asset = await session.get(Asset, asset_id)
+        if asset is None:
+            raise ValueError(f"Asset {asset_id} not found")
+        refresh_aggregate_status(asset)
+        await session.commit()
+        return {"asset_id": asset_id, "status": asset.status}

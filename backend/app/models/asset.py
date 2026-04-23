@@ -40,6 +40,7 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.models.alert import Alert
+    from app.models.watermark import WatermarkRegistry
 
 
 class Asset(Base):
@@ -51,6 +52,8 @@ class Asset(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False)
+    fingerprint_status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False)
+    watermark_status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False)
     video_path: Mapped[str] = mapped_column(String(1024), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -61,4 +64,7 @@ class Asset(Base):
 
     alerts: Mapped[list["Alert"]] = relationship(
         "Alert", back_populates="asset", cascade="all, delete-orphan"
+    )
+    watermark_registry: Mapped["WatermarkRegistry | None"] = relationship(
+        "WatermarkRegistry", back_populates="asset", cascade="all, delete-orphan"
     )

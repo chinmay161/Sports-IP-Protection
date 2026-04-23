@@ -15,6 +15,10 @@ class Settings:
     milvus_collection_name: str
     milvus_required: bool
     temp_root: Path
+    watermark_secret_key: str | None
+    s3_bucket_name: str | None
+    aws_region: str | None
+    s3_endpoint_url: str | None
 
 
 @lru_cache(maxsize=1)
@@ -29,4 +33,8 @@ def get_settings() -> Settings:
         milvus_collection_name=os.getenv("MILVUS_COLLECTION_NAME", "video_fingerprints"),
         milvus_required=milvus_required,
         temp_root=Path(os.getenv("TEMP_ROOT", "/tmp/sports_ip_temp")),
+        watermark_secret_key=os.getenv("WATERMARK_SECRET_KEY"),
+        s3_bucket_name=os.getenv("S3_BUCKET_NAME"),
+        aws_region=os.getenv("AWS_REGION"),
+        s3_endpoint_url=os.getenv("S3_ENDPOINT_URL"),
     )

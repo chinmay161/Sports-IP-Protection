@@ -15,6 +15,8 @@ class AssetResponse(BaseModel):
     title: str
     description: str | None
     status: str
+    fingerprint_status: str
+    watermark_status: str
     video_path: str
     created_at: datetime
     updated_at: datetime
