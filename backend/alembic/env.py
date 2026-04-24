@@ -5,7 +5,7 @@ from sqlalchemy import engine_from_config, pool
 
 from app.core.config import get_settings
 from app.db.base import Base
-from app.models import Alert, Asset, Match, MatchNote, MatchSegment, WatermarkRegistry
+from app.models import Alert, Asset, EvidencePackage, Match, MatchNote, MatchSegment, WatermarkRegistry
 
 
 config = context.config

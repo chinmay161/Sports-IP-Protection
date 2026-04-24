@@ -59,6 +59,11 @@ class DmcaResponse(BaseModel):
     task_id: str
 
 
+class EvidenceResponse(BaseModel):
+    download_url: str
+    expires_in: int
+
+
 class StatsResponse(BaseModel):
     total_matches: int
     by_severity: dict[str, int]

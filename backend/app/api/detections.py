@@ -7,6 +7,7 @@ from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect, status
+from fastapi.responses import JSONResponse
 from sqlalchemy import func, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -20,12 +21,14 @@ from app.models.match import Match, MatchNote
 from app.schemas.match import (
     AcknowledgeRequest,
     DmcaResponse,
+    EvidenceResponse,
     MatchRead,
     ScanRequest,
     ScanResponse,
     StatsResponse,
 )
 from app.schemas.watermark import WatermarkDetection, WatermarkScanRequest
+from app.services.evidence import EvidenceError, get_download_url as evidence_download_url
 from app.services.watermark import WatermarkService, decode_watermark_key
 from app.workers.evidence_task import generate as evidence_generate
 from app.workers.scan_task import scan_asset
@@ -214,6 +217,23 @@ async def dmca_detection(
     await db.commit()
     task = evidence_generate.delay(str(match_id))
     return DmcaResponse(match_id=match_id, status="dmca_sent", task_id=task.id)
+
+
+@router.get("/{match_id}/evidence", dependencies=[Depends(verify_token)])
+async def get_evidence_package(
+    match_id: UUID,
+    db: AsyncSession = Depends(get_db_session),
+) -> EvidenceResponse | dict[str, str]:
+    match = await db.get(Match, str(match_id))
+    if match is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Detection not found")
+    try:
+        payload = await evidence_download_url(str(match_id), db)
+        return EvidenceResponse(**payload)
+    except EvidenceError as exc:
+        if match.status == "dmca_sent":
+            return JSONResponse(status_code=status.HTTP_202_ACCEPTED, content={"status": "generating"})
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.websocket("/ws")
