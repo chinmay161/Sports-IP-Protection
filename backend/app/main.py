@@ -1,4 +1,5 @@
 # app/main.py
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -7,8 +8,11 @@ from fastapi import FastAPI
 from app.core.config import get_settings
 from app.api.assets import detections_router, router as assets_router
 from app.api.alerts import router as alerts_router
+from app.api.ws import router as ws_router  # NEW
 from app.db.milvus import ensure_collection
 from app.db.session import init_db
+from app.services.events import close_redis  # NEW
+from app.workers.alert_subscriber import run_alert_subscriber  # NEW
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -30,13 +34,28 @@ async def lifespan(app: FastAPI):
             raise
         logger.warning("milvus_startup_unavailable error=%s", exc)
 
-    yield
+    # NEW: start the Redis -> WebSocket subscriber as a background task.
+    subscriber_task = asyncio.create_task(run_alert_subscriber(), name="alert_subscriber")
+    logger.info("alert_subscriber_started")
+
+    try:
+        yield
+    finally:
+        # NEW: clean shutdown of subscriber + Redis client.
+        subscriber_task.cancel()
+        try:
+            await subscriber_task
+        except asyncio.CancelledError:
+            pass
+        await close_redis()
+        logger.info("alert_subscriber_stopped")
 
 
 app = FastAPI(title="Sports IP Protection API", lifespan=lifespan)
 app.include_router(assets_router)
 app.include_router(detections_router)
 app.include_router(alerts_router)
+app.include_router(ws_router)  # NEW
 
 
 @app.get("/")

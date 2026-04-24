@@ -8,13 +8,24 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 
+from app.core.config import get_settings
+
 load_dotenv()
 
 AUTH0_DOMAIN = os.getenv("AUTH0_DOMAIN", "")
 AUTH0_AUDIENCE = os.getenv("AUTH0_AUDIENCE", "")
 ALGORITHMS = ["RS256"]
 
-bearer_scheme = HTTPBearer()
+# auto_error=False so we can manually decide — otherwise FastAPI 403s on missing header
+# even when AUTH_DISABLED is true.
+bearer_scheme = HTTPBearer(auto_error=False)
+
+_DEV_USER = {
+    "sub": "dev|local",
+    "email": "dev@local",
+    "name": "Local Dev User",
+    "scope": "read:alerts write:alerts",
+}
 
 
 async def _get_jwks() -> dict:
@@ -28,14 +39,22 @@ async def _get_jwks() -> dict:
 
 
 async def verify_token(
-    credentials: Annotated[HTTPAuthorizationCredentials, Depends(bearer_scheme)],
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
 ) -> dict:
-    token = credentials.credentials
+    # Dev shortcut: skip Auth0 entirely.
+    if get_settings().auth_disabled:
+        return dict(_DEV_USER)
+
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid or expired token",
         headers={"WWW-Authenticate": "Bearer"},
     )
+
+    if credentials is None:
+        raise credentials_exception
+
+    token = credentials.credentials
     try:
         jwks = await _get_jwks()
         unverified_header = jwt.get_unverified_header(token)
