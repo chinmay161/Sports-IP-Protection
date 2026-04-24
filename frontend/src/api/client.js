@@ -163,3 +163,12 @@ export function getAssetPropagationSummary(assetId) {
     propagationFixture.summary,
   )
 }
+
+// ---------------------------------------------------------------------------
+// Stats
+// ---------------------------------------------------------------------------
+
+export function getDashboardStats({ windowDays = 7 } = {}) {
+  const params = new URLSearchParams({ window_days: windowDays })
+  return request(`/stats/dashboard?${params}`)
+}

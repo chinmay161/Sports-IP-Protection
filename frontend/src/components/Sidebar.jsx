@@ -1,6 +1,6 @@
 // src/components/Sidebar.jsx
 const NAV = [
-  { id: "dashboard",   label: "Dashboard",   icon: "▦", disabled: true  },
+  { id: "dashboard",   label: "Dashboard",   icon: "▦", disabled: false },
   { id: "assets",      label: "Assets",      icon: "◆", disabled: false },
   { id: "alerts",      label: "Alerts",      icon: "!", disabled: false },
   { id: "propagation", label: "Propagation", icon: "✦", disabled: false },
