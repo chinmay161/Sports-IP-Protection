@@ -4,7 +4,7 @@ import json
 import websockets  # already installed via uvicorn[standard]
 
 async def main():
-    uri = "ws://127.0.0.1:8001/ws/alerts"
+    uri = "ws://localhost:5173/ws/alerts"
     async with websockets.connect(uri) as ws:
         print(f"connected to {uri}")
         while True:

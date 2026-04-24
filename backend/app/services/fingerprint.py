@@ -348,17 +348,23 @@ class FingerprintService:
         frame_vectors: list[FingerprintVector],
         audio_vectors: list[FingerprintVector],
     ) -> None:
-        entities = {
-            "asset_id": [asset_id for _ in range(len(frame_vectors) + len(audio_vectors))],
-            "timestamp_ms": [item.timestamp_ms for item in frame_vectors + audio_vectors],
-            "type": [item.kind for item in frame_vectors + audio_vectors],
-            "hash_vector": [item.vector for item in frame_vectors + audio_vectors],
-        }
-        if not entities["asset_id"]:
+        all_vectors = frame_vectors + audio_vectors
+        if not all_vectors:
             return
 
+        # Row-oriented format: one dict per entity. Compatible with pymilvus 2.4+.
+        rows = [
+            {
+                "asset_id": asset_id,
+                "timestamp_ms": item.timestamp_ms,
+                "type": item.kind,
+                "hash_vector": item.vector,
+            }
+            for item in all_vectors
+        ]
+
         collection = self._get_collection()
-        await self._run_blocking(collection.insert, entities)
+        await self._run_blocking(collection.insert, rows)
         await self._run_blocking(collection.flush)
 
     async def _search_vectors(
