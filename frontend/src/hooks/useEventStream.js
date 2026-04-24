@@ -1,4 +1,4 @@
-// src/hooks/useAlertStream.js
+// src/hooks/useEventStream.js
 import { useCallback, useEffect, useRef, useState } from "react"
 
 import { listAlerts } from "../api/client.js"
@@ -6,27 +6,29 @@ import { listAlerts } from "../api/client.js"
 const MAX_BACKOFF_MS = 30_000
 const INITIAL_BACKOFF_MS = 1_000
 
-/**
- * Build the WebSocket URL from the current page origin.
- * Works in dev (via Vite proxy) and in prod (same-origin deploy).
- */
 function wsUrl() {
   const scheme = window.location.protocol === "https:" ? "wss:" : "ws:"
-  return `${scheme}//${window.location.host}/ws/alerts`
+  return `${scheme}//${window.location.host}/ws/events`
 }
 
 /**
- * Live alert feed.
+ * Unified real-time event stream.
+ *
+ * Handles these server messages:
+ *   { type: "alert.created", alert: {...} }
+ *   { type: "asset.status_changed", asset: {...} }
  *
  * Returns:
- *   alerts            Array of alerts, newest first.
- *   connectionStatus  "connecting" | "open" | "closed" | "error"
- *   error             null | string -- last fetch/connection error, for UI display.
- *   refresh()         Re-run the history fetch. Handy after bulk actions.
- *   replaceAlert(a)   Swap a single alert in the list by id. Use after PATCH/POST.
+ *   alerts              Array<Alert>, newest first
+ *   assetEvents         Map<assetId, Asset>  last-seen status per asset
+ *   connectionStatus    "connecting" | "open" | "closed" | "error"
+ *   error               null | string
+ *   refresh()           Re-fetch alert history from REST
+ *   replaceAlert(a)     Swap a single alert in state by id (after PATCH/POST)
  */
-export function useAlertStream() {
+export function useEventStream() {
   const [alerts, setAlerts] = useState([])
+  const [assetEvents, setAssetEvents] = useState(new Map())
   const [connectionStatus, setConnectionStatus] = useState("connecting")
   const [error, setError] = useState(null)
 
@@ -35,11 +37,18 @@ export function useAlertStream() {
   const reconnectTimerRef = useRef(null)
   const isActiveRef = useRef(true)
 
-  /** Merge: prepend new, deduplicate by id, keep sorted newest-first. */
   const upsertAlert = useCallback((incoming) => {
     setAlerts((current) => {
       const without = current.filter((a) => a.id !== incoming.id)
       return [incoming, ...without]
+    })
+  }, [])
+
+  const upsertAsset = useCallback((asset) => {
+    setAssetEvents((current) => {
+      const next = new Map(current)
+      next.set(asset.id, asset)
+      return next
     })
   }, [])
 
@@ -59,7 +68,6 @@ export function useAlertStream() {
     }
   }, [])
 
-  // Main effect: load history, open socket, reconnect on drop.
   useEffect(() => {
     isActiveRef.current = true
 
@@ -80,11 +88,17 @@ export function useAlertStream() {
       socket.onmessage = (evt) => {
         try {
           const msg = JSON.parse(evt.data)
-          if (msg.type === "alert.created" && msg.alert) {
-            upsertAlert(msg.alert)
+          switch (msg.type) {
+            case "alert.created":
+              if (msg.alert) upsertAlert(msg.alert)
+              break
+            case "asset.status_changed":
+              if (msg.asset) upsertAsset(msg.asset)
+              break
+            default:
+              console.warn("unknown_event_type", msg.type, msg)
           }
         } catch (exc) {
-          // Malformed server message; log but don't crash the stream.
           console.warn("ws_parse_failed", exc, evt.data)
         }
       }
@@ -103,19 +117,21 @@ export function useAlertStream() {
       }
     }
 
-    // Kick off: history first, then socket.
     refresh().finally(connect)
 
     return () => {
       isActiveRef.current = false
-      if (reconnectTimerRef.current) {
-        clearTimeout(reconnectTimerRef.current)
-      }
-      if (socketRef.current) {
-        socketRef.current.close()
-      }
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
+      if (socketRef.current) socketRef.current.close()
     }
-  }, [refresh, upsertAlert])
+  }, [refresh, upsertAlert, upsertAsset])
 
-  return { alerts, connectionStatus, error, refresh, replaceAlert }
+  return {
+    alerts,
+    assetEvents,
+    connectionStatus,
+    error,
+    refresh,
+    replaceAlert,
+  }
 }

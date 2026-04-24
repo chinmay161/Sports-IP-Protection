@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.websocket("/ws/alerts")
-async def alerts_stream(websocket: WebSocket) -> None:
+@router.websocket("/ws/events")
+async def event_stream(websocket: WebSocket) -> None:
     """Subscribe a client to the live alert stream.
 
     The client does not need to send anything. The server pushes JSON payloads

@@ -1,5 +1,5 @@
 // src/api/client.js
-// Thin wrapper around fetch for the alerts API.
+// Thin wrapper around fetch for the alerts + assets API.
 // All requests go through Vite's /api proxy -> FastAPI at 127.0.0.1:8001.
 
 const BASE = "/api"
@@ -14,12 +14,14 @@ async function request(path, options = {}) {
     const text = await res.text().catch(() => "")
     throw new Error(`${res.status} ${res.statusText}: ${text || path}`)
   }
-  // 204 No Content has an empty body -- guard against it.
   if (res.status === 204) return null
   return res.json()
 }
 
-/** GET /alerts -- returns an array of alert objects, newest first. */
+// ---------------------------------------------------------------------------
+// Alerts
+// ---------------------------------------------------------------------------
+
 export function listAlerts({ skip = 0, limit = 50, status, severity } = {}) {
   const params = new URLSearchParams({ skip, limit })
   if (status) params.set("status", status)
@@ -27,10 +29,6 @@ export function listAlerts({ skip = 0, limit = 50, status, severity } = {}) {
   return request(`/alerts?${params}`)
 }
 
-/**
- * PATCH /alerts/{id}/status
- * Valid values: open | acknowledged | dmca_initiated | resolved
- */
 export function updateAlertStatus(alertId, newStatus) {
   return request(`/alerts/${alertId}/status`, {
     method: "PATCH",
@@ -38,10 +36,6 @@ export function updateAlertStatus(alertId, newStatus) {
   })
 }
 
-/**
- * POST /alerts/{id}/dmca
- * Generates the DMCA notice text and marks the alert as dmca_initiated.
- */
 export function initiateDmca(alertId, { assetTitle, assetOwner, infringingUrl, contactEmail }) {
   return request(`/alerts/${alertId}/dmca`, {
     method: "POST",
@@ -54,7 +48,41 @@ export function initiateDmca(alertId, { assetTitle, assetOwner, infringingUrl, c
   })
 }
 
-/** POST /alerts/_simulate -- dev only, requires AUTH_DISABLED=true on the backend. */
 export function simulateAlert() {
   return request(`/alerts/_simulate`, { method: "POST" })
+}
+
+// ---------------------------------------------------------------------------
+// Assets
+// ---------------------------------------------------------------------------
+
+export function listAssets({ skip = 0, limit = 50 } = {}) {
+  const params = new URLSearchParams({ skip, limit })
+  return request(`/assets?${params}`)
+}
+
+export function getAsset(assetId) {
+  return request(`/assets/${assetId}`)
+}
+
+export async function uploadAsset({ file, title, description }) {
+  const form = new FormData()
+  form.append("file", file)
+  form.append("title", title)
+  if (description) form.append("description", description)
+
+  const res = await fetch("/api/assets", {
+    method: "POST",
+    body: form,
+    // Do NOT set Content-Type -- browser sets it with multipart boundary.
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => "")
+    throw new Error(`${res.status} ${res.statusText}: ${text || "upload failed"}`)
+  }
+  return res.json()
+}
+
+export function triggerIngest(assetId) {
+  return request(`/assets/${assetId}/ingest`, { method: "POST" })
 }

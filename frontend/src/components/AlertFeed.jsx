@@ -2,7 +2,7 @@
 import { useMemo, useState } from "react"
 
 import { simulateAlert } from "../api/client.js"
-import { useAlertStream } from "../hooks/useAlertStream.js"
+import { useEventStream } from "../hooks/useEventStream.js"
 import AlertCard from "./AlertCard.jsx"
 
 const STATUS_DOT = {
@@ -15,7 +15,7 @@ const STATUS_DOT = {
 const FILTERS = ["all", "open", "acknowledged", "dmca_initiated", "resolved"]
 
 export default function AlertFeed() {
-  const { alerts, connectionStatus, error, replaceAlert, refresh } = useAlertStream()
+  const { alerts, connectionStatus, error, replaceAlert, refresh } = useEventStream()
   const [filter, setFilter] = useState("all")
   const [simulating, setSimulating] = useState(false)
 

@@ -17,6 +17,7 @@ import json
 import logging
 from typing import Any, AsyncIterator
 
+import asyncio
 import redis.asyncio as redis
 
 from app.core.config import get_settings
@@ -24,14 +25,31 @@ from app.core.config import get_settings
 logger = logging.getLogger(__name__)
 
 CHANNEL_MATCH_CREATED = "match.created"
+CHANNEL_ASSET_STATUS_CHANGED = "asset.status_changed"
 
 
 _redis_client: redis.Redis | None = None
 
 
 def get_redis() -> redis.Redis:
-    """Return a process-wide async Redis client. Lazy-initialized."""
+    """Return an async Redis client bound to the current event loop.
+
+    FastAPI (one long-lived loop) reuses the client across calls.
+    Celery tasks create a new loop per task via asyncio.run(), so the cached
+    client's loop becomes closed; we detect that and rebuild.
+    """
     global _redis_client
+    if _redis_client is not None:
+        try:
+            # If the client's underlying connection pool was bound to a now-closed
+            # event loop, any call will fail. Cheapest detection: check the running
+            # loop matches what the client expects.
+            current_loop = asyncio.get_event_loop()
+            if current_loop.is_closed():
+                _redis_client = None
+        except RuntimeError:
+            _redis_client = None
+
     if _redis_client is None:
         settings = get_settings()
         _redis_client = redis.from_url(
