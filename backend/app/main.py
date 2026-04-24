@@ -10,11 +10,13 @@ from app.api.alerts import router as alerts_router
 from app.api.assets import router as assets_router
 from app.api.detections import router as detections_router
 from app.api.propagation import router as propagation_router
+from app.api.stats import router as stats_router
 from app.api.ws import router as ws_router  # NEW
 from app.db.milvus import ensure_collection
 from app.db.session import init_db
 from app.services.events import close_redis  # NEW
 from app.workers.event_subscriber import run_event_subscriber
+
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -58,7 +60,9 @@ app.include_router(assets_router)
 app.include_router(detections_router, prefix="/detections", tags=["detections"])
 app.include_router(alerts_router)
 app.include_router(propagation_router)
+app.include_router(stats_router)
 app.include_router(ws_router)  # NEW
+
 
 
 @app.get("/")
