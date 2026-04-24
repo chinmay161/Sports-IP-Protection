@@ -61,6 +61,7 @@ class Asset(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
+    last_scanned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     alerts: Mapped[list["Alert"]] = relationship(
         "Alert", back_populates="asset", cascade="all, delete-orphan"

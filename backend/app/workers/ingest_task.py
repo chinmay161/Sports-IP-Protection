@@ -1,46 +1,17 @@
 # app/workers/ingest_task.py
 import asyncio
 import logging
-import sys
 from uuid import UUID
 
-from app.core.config import get_settings
 from app.db.session import SessionLocal
 from app.models.asset import Asset
 from app.services.asset import refresh_aggregate_status
 from app.services.events import CHANNEL_ASSET_STATUS_CHANGED, publish
 from app.services.fingerprint import FingerprintService
-
-try:
-    from celery import Celery
-except ImportError:  # pragma: no cover - exercised only when dependency is absent
-    class Celery:  # type: ignore[override]
-        def __init__(self, *args, **kwargs) -> None:
-            self.args = args
-            self.kwargs = kwargs
-
-        def task(self, *args, **kwargs):
-            def decorator(func):
-                func.delay = lambda **delay_kwargs: type(
-                    "AsyncResultStub",
-                    (),
-                    {"id": f"local-{delay_kwargs.get('asset_id', 'task')}"},
-                )()
-                return func
-
-            return decorator
+from app.core.celery import celery_app
 
 
-settings = get_settings()
 logger = logging.getLogger(__name__)
-celery_app = Celery(
-    "sports_ip_protection",
-    broker=settings.celery_broker_url,
-    backend=settings.celery_result_backend,
-)
-
-if sys.platform.startswith("win"):
-    celery_app.conf.update(worker_pool="solo", worker_concurrency=1)
 
 
 async def _notify_asset_status_changed(asset_id: str) -> None:

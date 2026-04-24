@@ -84,7 +84,7 @@ def test_generate_returns_correct_frame_count(tmp_path: Path, monkeypatch: pytes
     assert result.frame_count == 3
     assert result.audio_window_count == 0
     assert result.duration_ms == 3000
-    assert collection.insert_payloads[0]["asset_id"] == [str(asset_id)] * 3
+    assert [row["asset_id"] for row in collection.insert_payloads[0]] == [str(asset_id)] * 3
 
 
 def test_match_finds_reencoded_copy(monkeypatch: pytest.MonkeyPatch) -> None:
