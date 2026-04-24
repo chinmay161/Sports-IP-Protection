@@ -59,7 +59,7 @@ app = FastAPI(title="Sports IP Protection API", lifespan=lifespan)
 app.include_router(assets_router)
 app.include_router(detections_router, prefix="/detections", tags=["detections"])
 app.include_router(alerts_router)
-app.include_router(propagation_router)
+app.include_router(propagation_router, prefix="/propagation", tags=["propagation"])
 app.include_router(stats_router)
 app.include_router(ws_router)  # NEW
 
