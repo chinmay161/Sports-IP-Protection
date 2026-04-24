@@ -6,10 +6,10 @@ from uuid import UUID
 
 from sqlalchemy import select
 
+from app.core.celery import celery_app
 from app.db.session import SessionLocal
 from app.models.asset import Asset
 from app.services.matcher import MatcherService
-from app.core.celery import celery_app
 
 
 logger = logging.getLogger(__name__)
@@ -19,7 +19,6 @@ logger = logging.getLogger(__name__)
     bind=True,
     max_retries=3,
     default_retry_delay=60,
-    name="workers.scan_task.scan_asset",
 )
 def scan_asset(self, asset_id: str, max_per_platform: int = 20):
     try:
@@ -47,7 +46,7 @@ async def _scan_asset_impl(asset_id: str, max_per_platform: int = 20) -> dict[st
     return {"asset_id": asset_id, "matches_found": len(matches)}
 
 
-@celery_app.task(name="workers.scan_task.scan_all_assets")
+@celery_app.task
 def scan_all_assets() -> dict[str, int]:
     return asyncio.run(_scan_all_assets_impl())
 

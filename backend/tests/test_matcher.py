@@ -250,10 +250,15 @@ def test_scan_publishes_redis_event(tmp_path: Path, monkeypatch: pytest.MonkeyPa
             channel, raw = published[0]
             payload = json.loads(raw)
             assert channel == "match.created"
+            assert payload["alert_id"]
             assert payload["match_id"] == str(result.id)
             assert payload["severity"] == "medium"
             assert payload["platform"] == "web"
             assert payload["confidence"] == 0.85
+            alert = await db.get(Alert, payload["alert_id"])
+            assert alert is not None
+            assert alert.asset_id == str(asset_id)
+            assert alert.infringing_url == result.source_url
         await engine.dispose()
 
     asyncio.run(run())

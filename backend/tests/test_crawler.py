@@ -12,10 +12,19 @@ def test_youtube_platform_and_url_format() -> None:
     results = asyncio.run(crawler.crawl("youtube", "test", 10))
 
     assert all(candidate.platform == "youtube" for candidate in results)
+    assert all(candidate.geo_country is None for candidate in results)
     assert all(
         re.match(r"^https://www\.youtube\.com/watch\?v=[A-Za-z0-9]{11}$", candidate.source_url)
         for candidate in results
     )
+
+
+def test_crawler_populates_resolved_geo(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(crawler, "country_for_url", lambda url: "US")
+
+    results = asyncio.run(crawler.crawl("web", "test", 3))
+
+    assert {candidate.geo_country for candidate in results} == {"US"}
 
 
 def test_tiktok_views_skew_higher_than_youtube() -> None:

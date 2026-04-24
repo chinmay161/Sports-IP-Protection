@@ -10,6 +10,8 @@ from pathlib import Path
 
 import numpy as np
 
+from app.services.geoip import country_for_url
+
 
 class CrawlerError(Exception):
     pass
@@ -29,28 +31,6 @@ class CandidateVideo:
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 SAMPLE_CLIP_PATH = BACKEND_ROOT / "media_store" / "ea1e3a18-b6bd-49dd-b958-78736560f24f.mp4"
-
-ISO_COUNTRIES = [
-    "AD", "AE", "AF", "AG", "AI", "AL", "AM", "AO", "AQ", "AR", "AS", "AT", "AU", "AW",
-    "AX", "AZ", "BA", "BB", "BD", "BE", "BF", "BG", "BH", "BI", "BJ", "BL", "BM", "BN",
-    "BO", "BQ", "BR", "BS", "BT", "BV", "BW", "BY", "BZ", "CA", "CC", "CD", "CF", "CG",
-    "CH", "CI", "CK", "CL", "CM", "CN", "CO", "CR", "CU", "CV", "CW", "CX", "CY", "CZ",
-    "DE", "DJ", "DK", "DM", "DO", "DZ", "EC", "EE", "EG", "EH", "ER", "ES", "ET", "FI",
-    "FJ", "FK", "FM", "FO", "FR", "GA", "GB", "GD", "GE", "GF", "GG", "GH", "GI", "GL",
-    "GM", "GN", "GP", "GQ", "GR", "GS", "GT", "GU", "GW", "GY", "HK", "HM", "HN", "HR",
-    "HT", "HU", "ID", "IE", "IL", "IM", "IN", "IO", "IQ", "IR", "IS", "IT", "JE", "JM",
-    "JO", "JP", "KE", "KG", "KH", "KI", "KM", "KN", "KP", "KR", "KW", "KY", "KZ", "LA",
-    "LB", "LC", "LI", "LK", "LR", "LS", "LT", "LU", "LV", "LY", "MA", "MC", "MD", "ME",
-    "MF", "MG", "MH", "MK", "ML", "MM", "MN", "MO", "MP", "MQ", "MR", "MS", "MT", "MU",
-    "MV", "MW", "MX", "MY", "MZ", "NA", "NC", "NE", "NF", "NG", "NI", "NL", "NO", "NP",
-    "NR", "NU", "NZ", "OM", "PA", "PE", "PF", "PG", "PH", "PK", "PL", "PM", "PN", "PR",
-    "PS", "PT", "PW", "PY", "QA", "RE", "RO", "RS", "RU", "RW", "SA", "SB", "SC", "SD",
-    "SE", "SG", "SH", "SI", "SJ", "SK", "SL", "SM", "SN", "SO", "SR", "SS", "ST", "SV",
-    "SX", "SY", "SZ", "TC", "TD", "TF", "TG", "TH", "TJ", "TK", "TL", "TM", "TN", "TO",
-    "TR", "TT", "TV", "TW", "TZ", "UA", "UG", "UM", "US", "UY", "UZ", "VA", "VC", "VE",
-    "VG", "VI", "VN", "VU", "WF", "WS", "YE", "YT", "ZA", "ZM", "ZW",
-]
-
 
 def _random_alnum(length: int) -> str:
     return "".join(random.choices(string.ascii_letters + string.digits, k=length))
@@ -72,9 +52,6 @@ class YouTubeMockAdapter:
         "HoopsCentral", "KickoffNation", "TrophyTrail", "LiveSportCuts", "ExtraTimeNow",
         "StadiumStories", "VolleyVision", "FightNightRecap", "RaceDayClips", "GridironLoop",
     ]
-    countries = ["US", "GB", "IN", "BR", "DE", "NG", "PH", "ID"]
-    weights = [0.25, 0.12, 0.15, 0.10, 0.08, 0.08, 0.10, 0.12]
-
     def generate(self, max_results: int) -> list[CandidateVideo]:
         results = []
         for _ in range(max_results):
@@ -87,7 +64,7 @@ class YouTubeMockAdapter:
                     channel=random.choice(self.channels),
                     view_count=view_count,
                     duration_ms=random.randint(30_000, 600_000),
-                    geo_country=random.choices(self.countries, weights=self.weights, k=1)[0],
+                    geo_country=None,
                     thumbnail_url=f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg",
                     uploaded_at=_uploaded_at(),
                 )
@@ -96,9 +73,6 @@ class YouTubeMockAdapter:
 
 
 class TikTokMockAdapter:
-    countries = ["IN", "US", "PH", "BR", "ID"]
-    weights = [0.34, 0.24, 0.18, 0.12, 0.12]
-
     def generate(self, max_results: int) -> list[CandidateVideo]:
         results = []
         for _ in range(max_results):
@@ -112,7 +86,7 @@ class TikTokMockAdapter:
                     channel=user,
                     view_count=view_count,
                     duration_ms=random.randint(15_000, 180_000),
-                    geo_country=random.choices(self.countries, weights=self.weights, k=1)[0],
+                    geo_country=None,
                     thumbnail_url=f"https://p16-sign.tiktokcdn-us.com/tos-useast5/{video_id}.jpeg",
                     uploaded_at=_uploaded_at(),
                 )
@@ -125,9 +99,6 @@ class TelegramMockAdapter:
         "sports_replays", "goal_streams", "matchday_clips", "cricket_livezone", "football_vault",
         "arena_uploads", "fight_replays", "tennis_points", "basketball_digest", "rugby_streams",
     ]
-    countries = ["RU", "UA", "IR", "PK", "BD"]
-    weights = [0.28, 0.16, 0.18, 0.20, 0.18]
-
     def generate(self, max_results: int) -> list[CandidateVideo]:
         results = []
         for _ in range(max_results):
@@ -140,7 +111,7 @@ class TelegramMockAdapter:
                     channel=channel,
                     view_count=random.randint(100, 50_000),
                     duration_ms=random.randint(60_000, 1_800_000),
-                    geo_country=random.choices(self.countries, weights=self.weights, k=1)[0],
+                    geo_country=None,
                     thumbnail_url=None,
                     uploaded_at=_uploaded_at(),
                 )
@@ -168,7 +139,7 @@ class WebMockAdapter:
                     channel=domain,
                     view_count=random.randint(50, 10_000),
                     duration_ms=random.randint(30_000, 900_000),
-                    geo_country=random.choice(ISO_COUNTRIES),
+                    geo_country=None,
                     thumbnail_url=None,
                     uploaded_at=_uploaded_at(),
                 )
@@ -191,7 +162,7 @@ class CrawlerService:
         if adapter is None:
             raise CrawlerError(f"Unsupported platform: {platform}")
         await asyncio.sleep(random.uniform(0.05, 0.15))
-        return adapter.generate(max_results)
+        return [_with_resolved_geo(candidate) for candidate in adapter.generate(max_results)]
 
     async def crawl_all(self, query: str, max_per_platform: int = 20) -> list[CandidateVideo]:
         result_groups = await asyncio.gather(
@@ -230,3 +201,21 @@ async def crawl_all(query: str, max_per_platform: int = 20) -> list[CandidateVid
 
 async def download_clip(url: str, dest_dir: Path) -> Path:
     return await _default_service.download_clip(url, dest_dir)
+
+
+def _with_resolved_geo(candidate: CandidateVideo) -> CandidateVideo:
+    if candidate.geo_country is not None:
+        return candidate
+    geo_country = country_for_url(candidate.source_url)
+    if geo_country is None:
+        return candidate
+    return CandidateVideo(
+        source_url=candidate.source_url,
+        platform=candidate.platform,
+        channel=candidate.channel,
+        view_count=candidate.view_count,
+        duration_ms=candidate.duration_ms,
+        geo_country=geo_country,
+        thumbnail_url=candidate.thumbnail_url,
+        uploaded_at=candidate.uploaded_at,
+    )

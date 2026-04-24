@@ -1,5 +1,6 @@
 # app/core/config.py
 import os
+import tempfile
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -25,6 +26,7 @@ class Settings:
     s3_endpoint_url: str | None
     redis_url: str
     auth_disabled: bool
+    geoip_database_path: str | None
 
 
 @lru_cache(maxsize=1)
@@ -37,11 +39,12 @@ def get_settings() -> Settings:
         milvus_token=os.getenv("MILVUS_TOKEN"),
         milvus_collection_name=os.getenv("MILVUS_COLLECTION_NAME", "video_fingerprints"),
         milvus_required=_bool_env("MILVUS_REQUIRED"),
-        temp_root=Path(os.getenv("TEMP_ROOT", "/tmp/sports_ip_temp")),
+        temp_root=Path(os.getenv("TEMP_ROOT", str(Path(tempfile.gettempdir()) / "sports_ip_temp"))),
         watermark_secret_key=os.getenv("WATERMARK_SECRET_KEY"),
         s3_bucket_name=os.getenv("S3_BUCKET_NAME"),
         aws_region=os.getenv("AWS_REGION"),
         s3_endpoint_url=os.getenv("S3_ENDPOINT_URL"),
         redis_url=os.getenv("REDIS_URL", "redis://localhost:6379/2"),
         auth_disabled=_bool_env("AUTH_DISABLED"),
+        geoip_database_path=os.getenv("GEOIP_DATABASE_PATH"),
     )
