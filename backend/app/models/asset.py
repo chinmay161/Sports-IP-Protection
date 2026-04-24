@@ -51,9 +51,15 @@ class Asset(Base):
     )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False)
     fingerprint_status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False)
     watermark_status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False)
+
+    # For URL-ingested assets: tracks the download stage. "n/a" for local uploads.
+    download_status: Mapped[str] = mapped_column(String(32), default="n/a", nullable=False)
+    source_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+
     video_path: Mapped[str] = mapped_column(String(1024), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -62,7 +68,6 @@ class Asset(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
     last_scanned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-
     alerts: Mapped[list["Alert"]] = relationship(
         "Alert", back_populates="asset", cascade="all, delete-orphan"
     )

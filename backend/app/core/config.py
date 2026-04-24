@@ -25,6 +25,7 @@ class Settings:
     s3_endpoint_url: str | None
     redis_url: str
     auth_disabled: bool
+    max_download_bytes: int
 
 
 @lru_cache(maxsize=1)
@@ -44,4 +45,6 @@ def get_settings() -> Settings:
         s3_endpoint_url=os.getenv("S3_ENDPOINT_URL"),
         redis_url=os.getenv("REDIS_URL", "redis://localhost:6379/2"),
         auth_disabled=_bool_env("AUTH_DISABLED"),
+        max_download_bytes=int(os.getenv("MAX_DOWNLOAD_BYTES", "2147483648")),  # 2 GB default
+        
     )

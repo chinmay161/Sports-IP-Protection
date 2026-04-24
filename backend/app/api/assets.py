@@ -55,7 +55,7 @@ from app.core.auth import verify_token
 from app.db.session import get_db_session
 from app.models.asset import Asset
 from app.models.watermark import WatermarkRegistry
-from app.schemas.asset import AssetCreate, AssetResponse, AssetStatusResponse
+from app.schemas.asset import AssetCreate, AssetFromUrl, AssetResponse, AssetStatusResponse
 from app.schemas.watermark import (
     WatermarkRequest,
     WatermarkResult,
@@ -63,6 +63,7 @@ from app.schemas.watermark import (
 from app.services.asset import get_asset, list_assets, refresh_aggregate_status, register_asset
 from app.workers.ingest_task import finalize_asset, ingest_asset
 from app.workers.watermark_task import watermark_asset
+from app.workers.download_task import download_asset
 
 try:
     from celery import chord
@@ -86,6 +87,41 @@ async def create_asset(
     metadata = AssetCreate(title=title, description=description)
     return await register_asset(db=db, metadata=metadata, file=file)
 
+
+@router.post("/from-url", response_model=AssetResponse, status_code=status.HTTP_202_ACCEPTED)
+async def create_asset_from_url(
+    payload: AssetFromUrl,
+    db: AsyncSession = Depends(get_db_session),
+) -> Asset:
+    """Register an asset from a remote URL. yt-dlp downloads in the background.
+
+    Flow:
+      1. Creates an Asset row with download_status='pending', video_path=''
+      2. Dispatches download_asset Celery task
+      3. Task downloads -> updates video_path + download_status='ready'
+      4. Task chains into ingest_asset (fingerprinting)
+      5. Each transition publishes asset.status_changed to Redis
+    """
+    import uuid
+    asset_id = str(uuid.uuid4())
+
+    asset = Asset(
+        id=asset_id,
+        title=payload.title,
+        description=payload.description,
+        status="processing",
+        fingerprint_status="pending",
+        watermark_status="ready",  # not watermarking URL-ingested assets yet
+        download_status="pending",
+        source_url=str(payload.url),
+        video_path="",  # filled in by the download task
+    )
+    db.add(asset)
+    await db.commit()
+    await db.refresh(asset)
+
+    download_asset.delay(asset_id=asset_id, url=str(payload.url))
+    return asset
 
 @router.get("", response_model=list[AssetResponse])
 async def list_all_assets(
