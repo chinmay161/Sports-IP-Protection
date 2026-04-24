@@ -1,10 +1,11 @@
 // src/components/Sidebar.jsx
 const NAV = [
-  { id: "dashboard", label: "Dashboard", icon: "▦", disabled: true },
-  { id: "assets", label: "Assets", icon: "◆", disabled: false },
-  { id: "alerts", label: "Alerts", icon: "!", disabled: false },
-  { id: "cases", label: "Cases", icon: "⬢", disabled: true },
-  { id: "settings", label: "Settings", icon: "⚙", disabled: true },
+  { id: "dashboard",   label: "Dashboard",   icon: "▦", disabled: true  },
+  { id: "assets",      label: "Assets",      icon: "◆", disabled: false },
+  { id: "alerts",      label: "Alerts",      icon: "!", disabled: false },
+  { id: "propagation", label: "Propagation", icon: "✦", disabled: false },
+  { id: "cases",       label: "Cases",       icon: "⬢", disabled: true  },
+  { id: "settings",    label: "Settings",    icon: "⚙", disabled: true  },
 ]
 
 export default function Sidebar({ active, onSelect }) {

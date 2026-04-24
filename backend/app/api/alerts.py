@@ -10,7 +10,15 @@ from app.core.auth import verify_token
 from app.core.config import get_settings
 from app.db.session import get_db_session
 from app.models.asset import Asset
-from app.schemas.alert import AlertCreate, AlertResponse, AlertStatusUpdate, DMCARequest
+from app.schemas.alert import (
+    AlertCreate,
+    AlertResponse,
+    AlertStatusUpdate,
+    CaseUpdate,
+    CommentCreate,
+    CommentResponse,
+    DMCARequest,
+)
 from app.services.alert import (
     create_alert,
     generate_dmca_notice,
@@ -18,7 +26,17 @@ from app.services.alert import (
     list_alerts,
     update_alert_status,
 )
-from app.services.events import CHANNEL_MATCH_CREATED, publish
+from app.services.case import (
+    VALID_PRIORITIES,
+    add_comment,
+    list_comments,
+    update_case_fields,
+)
+from app.services.events import (
+    CHANNEL_ALERT_UPDATED,
+    CHANNEL_MATCH_CREATED,
+    publish,
+)
 
 router = APIRouter(
     prefix="/alerts",
@@ -27,12 +45,15 @@ router = APIRouter(
 )
 
 
+# ---------------------------------------------------------------------------
+# Alert CRUD
+# ---------------------------------------------------------------------------
+
 @router.post("", response_model=AlertResponse, status_code=status.HTTP_201_CREATED)
 async def create_new_alert(
     data: AlertCreate,
     db: AsyncSession = Depends(get_db_session),
 ) -> AlertResponse:
-    """Create a new infringement alert. Triggers AI scoring + email notification."""
     return await create_alert(db=db, data=data)
 
 
@@ -44,7 +65,6 @@ async def list_all_alerts(
     severity: str | None = Query(default=None),
     db: AsyncSession = Depends(get_db_session),
 ) -> list[AlertResponse]:
-    """List all alerts. Filter by status or severity."""
     return await list_alerts(db=db, skip=skip, limit=limit, status=status, severity=severity)
 
 
@@ -63,18 +83,24 @@ async def get_single_alert(
 async def update_status(
     alert_id: UUID,
     body: AlertStatusUpdate,
+    current_user: dict = Depends(verify_token),
     db: AsyncSession = Depends(get_db_session),
 ) -> AlertResponse:
-    """Update alert status: open | acknowledged | dmca_initiated | resolved"""
+    """Update alert status. Logs a system comment and fires alert.updated event."""
     valid = {"open", "acknowledged", "dmca_initiated", "resolved"}
     if body.status not in valid:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid status. Must be one of: {valid}",
         )
-    alert = await update_alert_status(db=db, alert_id=str(alert_id), new_status=body.status)
-    if alert is None:
+    actor = current_user.get("email") or current_user.get("sub") or "system"
+    result = await update_alert_status(
+        db=db, alert_id=str(alert_id), new_status=body.status, actor=actor
+    )
+    if result is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Alert not found")
+    alert, _system_comment = result
+    await publish(CHANNEL_ALERT_UPDATED, {"alert_id": alert.id})
     return alert
 
 
@@ -84,7 +110,6 @@ async def initiate_dmca(
     body: DMCARequest,
     db: AsyncSession = Depends(get_db_session),
 ) -> AlertResponse:
-    """One-click DMCA notice generation. Generates a formal takedown notice and marks alert."""
     alert = await get_alert(db=db, alert_id=str(alert_id))
     if alert is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Alert not found")
@@ -99,13 +124,100 @@ async def initiate_dmca(
         asset_owner=body.asset_owner,
         contact_email=body.contact_email,
     )
+    await publish(CHANNEL_ALERT_UPDATED, {"alert_id": alert.id})
     return alert
 
 
 # ---------------------------------------------------------------------------
-# Dev-only simulator. Only exposed when AUTH_DISABLED=true.
-# Creates a synthetic asset + alert in the DB and publishes a match.created
-# event to Redis, exactly like the real matcher will do.
+# Case management — assignment, priority, due date
+# ---------------------------------------------------------------------------
+
+@router.patch("/{alert_id}/case", response_model=AlertResponse)
+async def patch_case(
+    alert_id: UUID,
+    body: CaseUpdate,
+    current_user: dict = Depends(verify_token),
+    db: AsyncSession = Depends(get_db_session),
+) -> AlertResponse:
+    """Partial update of case fields: assigned_to, priority, due_date.
+
+    To explicitly null a field, send it as null in JSON. To leave untouched,
+    omit it. (Note: both map to Python None in Pydantic, so we use the
+    `__fields_set__` introspection to distinguish.)
+    """
+    alert = await get_alert(db=db, alert_id=str(alert_id))
+    if alert is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Alert not found")
+
+    if body.priority is not None and body.priority not in VALID_PRIORITIES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid priority. Must be one of: {VALID_PRIORITIES}",
+        )
+
+    actor = current_user.get("email") or current_user.get("sub") or "system"
+    sent_fields = body.model_fields_set  # fields the client actually sent
+
+    try:
+        alert, _comments = await update_case_fields(
+            db=db,
+            alert=alert,
+            actor=actor,
+            assigned_to=body.assigned_to,
+            priority=body.priority,
+            due_date=body.due_date,
+            clear_assigned=("assigned_to" in sent_fields and body.assigned_to is None),
+            clear_due_date=("due_date" in sent_fields and body.due_date is None),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+    await publish(CHANNEL_ALERT_UPDATED, {"alert_id": alert.id})
+    return alert
+
+
+# ---------------------------------------------------------------------------
+# Comments
+# ---------------------------------------------------------------------------
+
+@router.get("/{alert_id}/comments", response_model=list[CommentResponse])
+async def get_comments(
+    alert_id: UUID,
+    db: AsyncSession = Depends(get_db_session),
+) -> list[CommentResponse]:
+    alert = await get_alert(db=db, alert_id=str(alert_id))
+    if alert is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Alert not found")
+    return await list_comments(db=db, alert_id=str(alert_id))
+
+
+@router.post(
+    "/{alert_id}/comments",
+    response_model=CommentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def post_comment(
+    alert_id: UUID,
+    body: CommentCreate,
+    db: AsyncSession = Depends(get_db_session),
+) -> CommentResponse:
+    alert = await get_alert(db=db, alert_id=str(alert_id))
+    if alert is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Alert not found")
+    comment = await add_comment(
+        db=db,
+        alert_id=str(alert_id),
+        author=body.author,
+        body=body.body,
+        kind="user",
+    )
+    # Publish alert.updated so any open dashboard can refresh its comment thread.
+    await publish(CHANNEL_ALERT_UPDATED, {"alert_id": str(alert_id)})
+    return comment
+
+
+# ---------------------------------------------------------------------------
+# Dev-only simulator (unchanged)
 # ---------------------------------------------------------------------------
 
 _SAMPLE_PLATFORMS = ["youtube", "tiktok", "telegram", "instagram", "twitter"]
@@ -129,17 +241,13 @@ async def simulate_alert(
     platform: str | None = Query(default=None, description="Override platform."),
     match_type: str | None = Query(default=None, description="fingerprint | watermark | both"),
 ) -> AlertResponse:
-    """Dev-only: create a synthetic alert and fire a match.created event.
-
-    Disabled unless AUTH_DISABLED=true.
-    """
+    """Dev-only: create a synthetic alert and fire a match.created event."""
     if not get_settings().auth_disabled:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Not found",
         )
 
-    # Ensure a dummy asset exists (create on first call, reuse afterwards).
     dummy_asset_id = "00000000-0000-0000-0000-0000000000a1"
     asset = await db.get(Asset, dummy_asset_id)
     if asset is None:
@@ -172,8 +280,6 @@ async def simulate_alert(
         ),
     )
 
-    # Publish the minimal event payload. The subscriber will fetch the full
-    # alert from the DB and broadcast to every connected WebSocket.
     await publish(
         CHANNEL_MATCH_CREATED,
         {

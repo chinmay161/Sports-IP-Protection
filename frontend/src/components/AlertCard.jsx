@@ -2,6 +2,7 @@
 import { useState } from "react"
 
 import { initiateDmca, updateAlertStatus } from "../api/client.js"
+import CasePanel from "./CasePanel.jsx"
 import StatusBadge from "./StatusBadge.jsx"
 
 function formatWhen(iso) {
@@ -15,10 +16,18 @@ function formatWhen(iso) {
   })
 }
 
+const PRIORITY_STYLES = {
+  low:    "bg-slate-500/15 text-slate-300 ring-slate-500/30",
+  medium: "bg-cyan-500/15 text-cyan-300 ring-cyan-500/40",
+  high:   "bg-orange-500/15 text-orange-300 ring-orange-500/40",
+  urgent: "bg-red-500/15 text-red-300 ring-red-500/40",
+}
+
 export default function AlertCard({ alert, onReplace }) {
-  const [busy, setBusy] = useState(null) // "ack" | "resolve" | "dmca" | null
+  const [busy, setBusy] = useState(null)
   const [notice, setNotice] = useState(alert.dmca_notice)
   const [showNotice, setShowNotice] = useState(false)
+  const [expanded, setExpanded] = useState(false)
   const [err, setErr] = useState(null)
 
   const run = async (action, fn) => {
@@ -43,10 +52,32 @@ export default function AlertCard({ alert, onReplace }) {
       <header className="flex flex-wrap items-center gap-2">
         <StatusBadge kind="severity" value={alert.severity_label} />
         <StatusBadge kind="status" value={alert.status} />
+
+        {alert.priority && alert.priority !== "medium" && (
+          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ring-1 ring-inset ${PRIORITY_STYLES[alert.priority]}`}>
+            {alert.priority}
+          </span>
+        )}
+
         <span className="text-xs text-slate-400">{alert.platform ?? "unknown"}</span>
+
+        {alert.assigned_to && (
+          <span className="text-[11px] text-slate-400">
+            {"→ "}{alert.assigned_to.split("@")[0]}
+          </span>
+        )}
+
         <span className="ml-auto text-xs text-slate-500">
           {formatWhen(alert.created_at)}
         </span>
+
+        <button
+          onClick={() => setExpanded((v) => !v)}
+          className="text-xs text-slate-500 hover:text-slate-300"
+          aria-label={expanded ? "Collapse case" : "Expand case"}
+        >
+          {expanded ? "▾" : "▸"}
+        </button>
       </header>
 
       <div className="mt-3 space-y-1">
@@ -74,9 +105,7 @@ export default function AlertCard({ alert, onReplace }) {
       <footer className="mt-4 flex flex-wrap items-center gap-2">
         {alert.status === "open" && (
           <button
-            onClick={() =>
-              run("ack", () => updateAlertStatus(alert.id, "acknowledged"))
-            }
+            onClick={() => run("ack", () => updateAlertStatus(alert.id, "acknowledged"))}
             disabled={busy !== null}
             className="rounded-md border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-200 transition hover:border-slate-500 disabled:opacity-50"
           >
@@ -114,9 +143,7 @@ export default function AlertCard({ alert, onReplace }) {
 
         {!isResolved && (
           <button
-            onClick={() =>
-              run("resolve", () => updateAlertStatus(alert.id, "resolved"))
-            }
+            onClick={() => run("resolve", () => updateAlertStatus(alert.id, "resolved"))}
             disabled={busy !== null}
             className="ml-auto rounded-md border border-emerald-500/40 px-3 py-1.5 text-xs font-medium text-emerald-300 transition hover:border-emerald-500 disabled:opacity-50"
           >
@@ -142,6 +169,10 @@ export default function AlertCard({ alert, onReplace }) {
             {notice}
           </pre>
         </div>
+      )}
+
+      {expanded && (
+        <CasePanel alert={alert} onUpdated={onReplace} />
       )}
     </article>
   )

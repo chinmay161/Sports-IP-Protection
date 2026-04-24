@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.alert import Alert
 from app.models.asset import Asset
+from app.models.comment import CaseComment
 from app.schemas.alert import AlertCreate
 from app.services.email import send_alert_email
 from app.services.severity import compute_severity
@@ -16,12 +17,9 @@ logger = logging.getLogger(__name__)
 
 async def create_alert(db: AsyncSession, data: AlertCreate) -> Alert:
     """Create an alert, score severity via AI, send email notification."""
-
-    # Fetch asset title for context
     asset = await db.get(Asset, str(data.asset_id))
     asset_title = asset.title if asset else "Unknown Asset"
 
-    # AI severity scoring
     score, label, reasoning = await compute_severity(
         match_type=data.match_type,
         confidence=data.confidence,
@@ -47,7 +45,6 @@ async def create_alert(db: AsyncSession, data: AlertCreate) -> Alert:
     await db.commit()
     await db.refresh(alert)
 
-    # Send email notification in background (non-blocking)
     try:
         sent = send_alert_email(
             asset_title=asset_title,
@@ -91,15 +88,33 @@ async def get_alert(db: AsyncSession, alert_id: str) -> Alert | None:
 
 
 async def update_alert_status(
-    db: AsyncSession, alert_id: str, new_status: str
-) -> Alert | None:
+    db: AsyncSession,
+    alert_id: str,
+    new_status: str,
+    actor: str = "system",
+) -> tuple[Alert, CaseComment] | None:
+    """Update status and log a system comment. Returns (alert, system_comment)
+    or None if alert not found. If status is unchanged, comment has kind='system'
+    but body just reflects the no-op (rare; caller can check old==new beforehand)."""
     alert = await get_alert(db, alert_id)
     if alert is None:
         return None
+
+    old_status = alert.status
     alert.status = new_status
+
+    system_comment = CaseComment(
+        alert_id=alert.id,
+        author=actor,
+        body=f"Status: {old_status} → {new_status}",
+        kind="system",
+    )
+    db.add(system_comment)
+
     await db.commit()
     await db.refresh(alert)
-    return alert
+    await db.refresh(system_comment)
+    return alert, system_comment
 
 
 async def generate_dmca_notice(
@@ -146,7 +161,18 @@ Sincerely,
 """
 
     alert.dmca_notice = notice
+    old_status = alert.status
     alert.status = "dmca_initiated"
+
+    # Log the status change as a system comment too
+    system_comment = CaseComment(
+        alert_id=alert.id,
+        author="system",
+        body=f"Status: {old_status} → dmca_initiated (DMCA notice generated)",
+        kind="system",
+    )
+    db.add(system_comment)
+
     await db.commit()
     await db.refresh(alert)
     return alert

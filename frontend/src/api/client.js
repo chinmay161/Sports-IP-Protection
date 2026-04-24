@@ -1,10 +1,15 @@
 // src/api/client.js
-// Thin wrapper around fetch for the alerts + assets API.
+// Thin wrapper around fetch for the alerts + assets + propagation API.
 // All requests go through Vite's /api proxy -> FastAPI at 127.0.0.1:8001.
+
+import propagationFixture from "../fixtures/propagation.json"
 
 const BASE = "/api"
 
-/** Internal helper: fetch + JSON parse + error on non-2xx. */
+// Flip to false once Dev 1's /propagation/* endpoints are live and stable.
+// Until then we fall back to the bundled fixture on 404.
+const USE_MOCK_PROPAGATION_FALLBACK = true
+
 async function request(path, options = {}) {
   const res = await fetch(`${BASE}${path}`, {
     headers: { "Content-Type": "application/json", ...options.headers },
@@ -12,10 +17,25 @@ async function request(path, options = {}) {
   })
   if (!res.ok) {
     const text = await res.text().catch(() => "")
-    throw new Error(`${res.status} ${res.statusText}: ${text || path}`)
+    const err = new Error(`${res.status} ${res.statusText}: ${text || path}`)
+    err.status = res.status
+    throw err
   }
   if (res.status === 204) return null
   return res.json()
+}
+
+/** Try the real API; fall back to fixture on 404 if mock fallback is enabled. */
+async function requestWithMockFallback(path, mockValue) {
+  try {
+    return await request(path)
+  } catch (exc) {
+    if (USE_MOCK_PROPAGATION_FALLBACK && exc.status === 404) {
+      console.info(`[mock] ${path} not implemented yet — using fixture`)
+      return mockValue
+    }
+    throw exc
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -74,7 +94,6 @@ export async function uploadAsset({ file, title, description }) {
   const res = await fetch("/api/assets", {
     method: "POST",
     body: form,
-    // Do NOT set Content-Type -- browser sets it with multipart boundary.
   })
   if (!res.ok) {
     const text = await res.text().catch(() => "")
@@ -85,4 +104,62 @@ export async function uploadAsset({ file, title, description }) {
 
 export function triggerIngest(assetId) {
   return request(`/assets/${assetId}/ingest`, { method: "POST" })
+}
+
+// ---------------------------------------------------------------------------
+// Case management
+// ---------------------------------------------------------------------------
+
+export function listComments(alertId) {
+  return request(`/alerts/${alertId}/comments`)
+}
+
+export function addComment(alertId, { author, body }) {
+  return request(`/alerts/${alertId}/comments`, {
+    method: "POST",
+    body: JSON.stringify({ author, body }),
+  })
+}
+
+/**
+ * Partial update. Pass fields you want to change. Pass `null` to clear a field
+ * (e.g. `{ assigned_to: null }` to unassign).
+ */
+export function updateCase(alertId, { assigned_to, priority, due_date } = {}) {
+  const payload = {}
+  // Only include keys the caller explicitly passed, so PATCH semantics work
+  // on the backend (it uses model_fields_set to distinguish null vs omitted).
+  if (assigned_to !== undefined) payload.assigned_to = assigned_to
+  if (priority !== undefined) payload.priority = priority
+  if (due_date !== undefined) payload.due_date = due_date
+
+  return request(`/alerts/${alertId}/case`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Propagation (Dev 1's spec — mocked until backend is live)
+// ---------------------------------------------------------------------------
+
+export function getPropagationGraph(matchId) {
+  return requestWithMockFallback(
+    `/propagation/${matchId}/graph`,
+    propagationFixture.graph,
+  )
+}
+
+export function getPropagationTimeline(matchId) {
+  return requestWithMockFallback(
+    `/propagation/${matchId}/timeline`,
+    propagationFixture.timeline,
+  )
+}
+
+export function getAssetPropagationSummary(assetId) {
+  return requestWithMockFallback(
+    `/propagation/${assetId}/summary`,
+    propagationFixture.summary,
+  )
 }

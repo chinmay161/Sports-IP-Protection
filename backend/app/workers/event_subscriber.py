@@ -20,6 +20,7 @@ from app.models.alert import Alert
 from app.models.asset import Asset
 from app.services.broadcaster import manager
 from app.services.events import (
+    CHANNEL_ALERT_UPDATED,
     CHANNEL_ASSET_STATUS_CHANGED,
     CHANNEL_MATCH_CREATED,
     get_redis,
@@ -91,10 +92,25 @@ async def _handle_asset_status_changed(payload: dict[str, Any]) -> None:
     )
     logger.info("asset_broadcast asset_id=%s reached=%d", asset_id, reached)
 
+async def _handle_alert_updated(payload: dict[str, Any]) -> None:
+    alert_id = payload.get("alert_id")
+    if not alert_id:
+        logger.warning("alert_update_missing_id payload=%s", payload)
+        return
+    async with SessionLocal() as session:
+        alert = await session.get(Alert, str(alert_id))
+    if alert is None:
+        logger.warning("alert_not_found_for_update alert_id=%s", alert_id)
+        return
+    reached = await manager.broadcast(
+        {"type": "alert.updated", "alert": _serialize_alert(alert)}
+    )
+    logger.info("alert_update_broadcast alert_id=%s reached=%d", alert_id, reached)
 
 HANDLERS = {
     CHANNEL_MATCH_CREATED: _handle_match_created,
     CHANNEL_ASSET_STATUS_CHANGED: _handle_asset_status_changed,
+    CHANNEL_ALERT_UPDATED: _handle_alert_updated,
 }
 
 

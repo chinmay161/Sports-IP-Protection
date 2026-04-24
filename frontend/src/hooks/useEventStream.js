@@ -92,6 +92,9 @@ export function useEventStream() {
             case "alert.created":
               if (msg.alert) upsertAlert(msg.alert)
               break
+            case "alert.updated":
+              if (msg.alert) upsertAlert(msg.alert)
+              break
             case "asset.status_changed":
               if (msg.asset) upsertAsset(msg.asset)
               break

@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 CHANNEL_MATCH_CREATED = "match.created"
 CHANNEL_ASSET_STATUS_CHANGED = "asset.status_changed"
+CHANNEL_ALERT_UPDATED = "alert.updated"
 
 
 _redis_client: redis.Redis | None = None

@@ -1,0 +1,8 @@
+[
+  { "email": "legal@sportsip.example",   "name": "Legal Team",       "role": "Legal" },
+  { "email": "safety@sportsip.example",  "name": "Trust & Safety",   "role": "Moderation" },
+  { "email": "ops@sportsip.example",     "name": "Operations",       "role": "Takedowns" },
+  { "email": "alex@sportsip.example",    "name": "Alex Morgan",      "role": "Analyst" },
+  { "email": "priya@sportsip.example",   "name": "Priya Sharma",     "role": "Analyst" },
+  { "email": "chen@sportsip.example",    "name": "Chen Wei",         "role": "Investigations" }
+]
