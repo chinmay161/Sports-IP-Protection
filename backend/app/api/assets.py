@@ -52,19 +52,15 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import verify_token
-from app.core.config import get_settings
 from app.db.session import get_db_session
 from app.models.asset import Asset
 from app.models.watermark import WatermarkRegistry
 from app.schemas.asset import AssetCreate, AssetResponse, AssetStatusResponse
 from app.schemas.watermark import (
-    WatermarkDetection,
     WatermarkRequest,
     WatermarkResult,
-    WatermarkScanRequest,
 )
 from app.services.asset import get_asset, list_assets, refresh_aggregate_status, register_asset
-from app.services.watermark import WatermarkService, decode_watermark_key
 from app.workers.ingest_task import finalize_asset, ingest_asset
 from app.workers.watermark_task import watermark_asset
 
@@ -76,11 +72,6 @@ except ImportError:  # pragma: no cover - exercised only when dependency is abse
 router = APIRouter(
     prefix="/assets",
     tags=["assets"],
-    dependencies=[Depends(verify_token)],
-)
-detections_router = APIRouter(
-    prefix="/detections",
-    tags=["detections"],
     dependencies=[Depends(verify_token)],
 )
 
@@ -195,18 +186,3 @@ async def get_asset_watermark(
         s3_key=f"watermarked/{asset_id}/video.mp4",
         psnr_mean=registry.psnr_mean,
     )
-
-
-@detections_router.post("/watermark-scan")
-async def watermark_scan_endpoint(request: WatermarkScanRequest) -> WatermarkDetection | dict[str, bool]:
-    settings = get_settings()
-    if not settings.watermark_secret_key:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Watermark key not configured")
-    try:
-        key = decode_watermark_key(settings.watermark_secret_key)
-    except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Invalid watermark key") from exc
-    detection = await WatermarkService().detect_from_url(request.url, key)
-    if detection is None:
-        return {"matched": False}
-    return detection

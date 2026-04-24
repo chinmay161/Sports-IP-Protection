@@ -1,7 +1,8 @@
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class MatchSegmentRead(BaseModel):
@@ -36,3 +37,31 @@ class MatchRead(BaseModel):
     resolved_at: datetime | None
     segments: list[MatchSegmentRead] = []
     model_config = ConfigDict(from_attributes=True)
+
+
+class AcknowledgeRequest(BaseModel):
+    note: str | None = None
+
+
+class ScanRequest(BaseModel):
+    asset_id: UUID
+    max_per_platform: int = Field(default=10, ge=1, le=50)
+
+
+class ScanResponse(BaseModel):
+    task_id: str
+    status: str
+
+
+class DmcaResponse(BaseModel):
+    match_id: UUID
+    status: str
+    task_id: str
+
+
+class StatsResponse(BaseModel):
+    total_matches: int
+    by_severity: dict[str, int]
+    by_platform: dict[str, int]
+    by_status: dict[str, int]
+    top_infringing_countries: list[dict[str, Any]]

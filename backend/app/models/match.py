@@ -47,6 +47,9 @@ class Match(Base):
     segments: Mapped[list["MatchSegment"]] = relationship(
         "MatchSegment", back_populates="match", cascade="all, delete-orphan"
     )
+    notes: Mapped[list["MatchNote"]] = relationship(
+        "MatchNote", back_populates="match", cascade="all, delete-orphan"
+    )
 
 
 class MatchSegment(Base):
@@ -67,3 +70,20 @@ class MatchSegment(Base):
     thumbnail_s3_key: Mapped[str | None] = mapped_column(String(1024), nullable=True)
 
     match: Mapped["Match"] = relationship("Match", back_populates="segments")
+
+
+class MatchNote(Base):
+    __tablename__ = "match_notes"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    match_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("matches.id", ondelete="CASCADE"), nullable=False
+    )
+    note: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    match: Mapped["Match"] = relationship("Match", back_populates="notes")
