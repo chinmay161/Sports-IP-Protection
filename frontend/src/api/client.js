@@ -8,7 +8,7 @@ const BASE = "/api"
 
 // Flip to false once Dev 1's /propagation/* endpoints are live and stable.
 // Until then we fall back to the bundled fixture on 404.
-const USE_MOCK_PROPAGATION_FALLBACK = true
+const USE_MOCK_PROPAGATION_FALLBACK = false
 
 async function request(path, options = {}) {
   const res = await fetch(`${BASE}${path}`, {
@@ -178,4 +178,31 @@ export function getAssetPropagationSummary(assetId) {
 export function getDashboardStats({ windowDays = 7 } = {}) {
   const params = new URLSearchParams({ window_days: windowDays })
   return request(`/stats/dashboard?${params}`)
+}
+
+// ---------------------------------------------------------------------------
+// Detections (Dev 1's match list)
+// ---------------------------------------------------------------------------
+
+export function listDetections({ skip = 0, limit = 50 } = {}) {
+  const params = new URLSearchParams({ skip, limit })
+  return request(`/detections?${params}`)
+}
+
+export function scanAsset(assetId, { maxPerPlatform = 5 } = {}) {
+  return request(`/detections/scan`, {
+    method: "POST",
+    body: JSON.stringify({
+      asset_id: assetId,
+      max_per_platform: maxPerPlatform,
+    }),
+  })
+}
+
+// ---------------------------------------------------------------------------
+// System / Health
+// ---------------------------------------------------------------------------
+
+export function getHealth() {
+  return request("/health")
 }

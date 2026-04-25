@@ -3,9 +3,10 @@ const NAV = [
   { id: "dashboard",   label: "Dashboard",   icon: "▦", disabled: false },
   { id: "assets",      label: "Assets",      icon: "◆", disabled: false },
   { id: "alerts",      label: "Alerts",      icon: "!", disabled: false },
+  { id: "detections",  label: "Detections",  icon: "◉", disabled: false },
   { id: "propagation", label: "Propagation", icon: "✦", disabled: false },
-  { id: "cases",       label: "Cases",       icon: "⬢", disabled: true  },
-  { id: "settings",    label: "Settings",    icon: "⚙", disabled: true  },
+  { id: "cases",       label: "Cases",       icon: "⬢", disabled: false },
+  { id: "system",      label: "System",      icon: "⚙", disabled: false },
 ]
 
 export default function Sidebar({ active, onSelect }) {
