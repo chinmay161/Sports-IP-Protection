@@ -1,6 +1,6 @@
 {
   "graph": {
-    "match_id": "demo-match-0001",
+    "match_id": "00000000-0000-4000-8000-000000000001",
     "generated_at": "2026-04-24T13:00:00Z",
     "nodes": [
       {
@@ -211,7 +211,7 @@
     }
   },
   "timeline": {
-    "match_id": "demo-match-0001",
+    "match_id": "00000000-0000-4000-8000-000000000001",
     "bucket_size_ms": 3600000,
     "buckets": [
       { "bucket_start": "2026-04-24T08:00:00Z", "new_nodes": 2, "cumulative_nodes": 2, "cumulative_views": 170000 },
@@ -225,7 +225,7 @@
     "velocity_index": 3.0
   },
   "summary": {
-    "asset_id": "demo-asset-0001",
+    "asset_id": "00000000-0000-4000-8000-000000000002",
     "total_infringing_copies": 14,
     "total_estimated_views": 719300,
     "platforms_reached": ["telegram", "youtube", "tiktok", "web"],

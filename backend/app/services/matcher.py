@@ -107,13 +107,16 @@ def _scan_dest() -> Path:
     return Path(root) / f"scan_{uuid4()}"
 
 
-async def _fingerprint_match(video_path: str) -> list[FingerprintMatch]:
+async def _fingerprint_match(video_path: str, asset_ids: list[UUID] | None = None) -> list[FingerprintMatch]:
     service = FingerprintService()
     call = service.match
+    kwargs = {"threshold": 10}
+    if "asset_ids" in inspect.signature(call).parameters:
+        kwargs["asset_ids"] = asset_ids
     if inspect.iscoroutinefunction(call):
-        return await call(video_path, threshold=10)
+        return await call(video_path, **kwargs)
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(None, lambda: call(video_path, threshold=10))
+    return await loop.run_in_executor(None, lambda: call(video_path, **kwargs))
 
 
 class MatcherService:
@@ -129,7 +132,7 @@ class MatcherService:
                 raise RuntimeError("WATERMARK_SECRET_KEY is required")
             key = decode_watermark_key(settings.watermark_secret_key)
 
-            fp_task = _fingerprint_match(str(video_path))
+            fp_task = _fingerprint_match(str(video_path), asset_ids)
             wm_task = WatermarkService().detect_from_url(candidate.source_url, key)
             fp_matches, wm_detection = await asyncio.gather(fp_task, wm_task)
             allowed_assets = set(asset_ids)
@@ -216,7 +219,12 @@ class MatcherService:
         asset_title = asset.title
         await db.rollback()
 
-        candidates = await CrawlerService().crawl_all(asset_title, max_per_platform)
+        crawler = CrawlerService()
+        crawl_all = crawler.crawl_all
+        if "asset_id" in inspect.signature(crawl_all).parameters:
+            candidates = await crawl_all(asset_title, max_per_platform, asset_id=asset_id)
+        else:
+            candidates = await crawl_all(asset_title, max_per_platform)
         results = await asyncio.gather(
             *[MatcherService.scan(candidate, [asset_id], db) for candidate in candidates],
             return_exceptions=True,

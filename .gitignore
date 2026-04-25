@@ -56,3 +56,5 @@ frontend/.vite/
 logs/
 tmp/
 temp/
+backend/.tmp/
+backend/media_store/

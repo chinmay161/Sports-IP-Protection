@@ -22,6 +22,13 @@ alembic>=1.13,<2
 reportlab>=4,<5
 yt-dlp>=2024.1,<2026
 geoip2>=4.8,<5
+yt-dlp>=2024.4,<2027
+torch>=2.2,<3
+torchvision>=0.17,<1
+ftfy>=6.2,<7
+regex>=2024.4
+tqdm>=4.66,<5
+git+https://github.com/openai/CLIP.git
 
 # Test dependencies
 pytest>=8,<10

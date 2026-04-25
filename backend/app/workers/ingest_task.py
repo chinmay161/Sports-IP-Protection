@@ -8,6 +8,7 @@ from app.models.asset import Asset
 from app.services.asset import refresh_aggregate_status
 from app.services.events import CHANNEL_ASSET_STATUS_CHANGED, publish
 from app.services.fingerprint import FingerprintService
+from app.services.visual_discovery import VisualDiscoveryService
 from app.core.celery import celery_app
 
 
@@ -82,6 +83,14 @@ async def _ingest_asset_impl(asset_id: str, video_path: str) -> dict[str, str]:
 
         try:
             await service.generate(video_path=video_path, asset_id=UUID(asset_id))
+            try:
+                visual_count = await VisualDiscoveryService(session).index_asset(
+                    asset_id=UUID(asset_id),
+                    video_path=video_path,
+                )
+                logger.info("visual_index_generated asset_id=%s frame_count=%d", asset_id, visual_count)
+            except Exception:
+                logger.exception("visual_index_failed asset_id=%s", asset_id)
         except (OSError, ConnectionError, TimeoutError) as exc:
             if hasattr(asset, "fingerprint_status"):
                 asset.fingerprint_status = "failed"

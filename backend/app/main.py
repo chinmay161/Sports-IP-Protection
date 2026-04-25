@@ -4,8 +4,10 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from app.core.config import get_settings
+from app.core.storage import LOCAL_ARTIFACT_ROOT
 from app.api.alerts import router as alerts_router
 from app.api.assets import router as assets_router
 from app.api.detections import router as detections_router
@@ -62,6 +64,8 @@ app.include_router(alerts_router)
 app.include_router(propagation_router, prefix="/propagation", tags=["propagation"])
 app.include_router(stats_router)
 app.include_router(ws_router)  # NEW
+LOCAL_ARTIFACT_ROOT.mkdir(parents=True, exist_ok=True)
+app.mount("/files", StaticFiles(directory=str(LOCAL_ARTIFACT_ROOT)), name="files")
 
 
 

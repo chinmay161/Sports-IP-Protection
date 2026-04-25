@@ -5,6 +5,13 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+
+BACKEND_ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
+load_dotenv(BACKEND_ENV_PATH)
+load_dotenv()
+
 
 def _bool_env(name: str, default: str = "false") -> bool:
     return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "on"}
@@ -28,6 +35,13 @@ class Settings:
     auth_disabled: bool
     max_download_bytes: int
     geoip_database_path: str | None
+    crawler_mode: str
+    crawler_discovery_mode: str
+    crawler_watchlist_urls: str | None
+    visual_crawl_max_pages: int
+    visual_crawl_max_images: int
+    visual_crawl_max_candidates: int
+    visual_phash_threshold: int
 
 
 @lru_cache(maxsize=1)
@@ -49,4 +63,11 @@ def get_settings() -> Settings:
         auth_disabled=_bool_env("AUTH_DISABLED"),
         max_download_bytes=int(os.getenv("MAX_DOWNLOAD_BYTES", "2147483648")),
         geoip_database_path=os.getenv("GEOIP_DATABASE_PATH"),
+        crawler_mode=os.getenv("CRAWLER_MODE", "mock").strip().lower(),
+        crawler_discovery_mode=os.getenv("CRAWLER_DISCOVERY_MODE", "hybrid").strip().lower(),
+        crawler_watchlist_urls=os.getenv("CRAWLER_WATCHLIST_URLS"),
+        visual_crawl_max_pages=int(os.getenv("VISUAL_CRAWL_MAX_PAGES", "50")),
+        visual_crawl_max_images=int(os.getenv("VISUAL_CRAWL_MAX_IMAGES", "100")),
+        visual_crawl_max_candidates=int(os.getenv("VISUAL_CRAWL_MAX_CANDIDATES", "25")),
+        visual_phash_threshold=int(os.getenv("VISUAL_PHASH_THRESHOLD", "18")),
     )

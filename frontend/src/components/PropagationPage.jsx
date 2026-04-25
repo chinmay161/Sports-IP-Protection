@@ -10,8 +10,8 @@ import PropagationGraph from "./PropagationGraph.jsx"
 import PropagationSummary from "./PropagationSummary.jsx"
 import PropagationTimeline from "./PropagationTimeline.jsx"
 
-const PLACEHOLDER_MATCH_ID = "demo-match-0001"
-const PLACEHOLDER_ASSET_ID = "demo-asset-0001"
+const PLACEHOLDER_MATCH_ID = "00000000-0000-4000-8000-000000000001"
+const PLACEHOLDER_ASSET_ID = "00000000-0000-4000-8000-000000000002"
 
 export default function PropagationPage() {
   const [graph, setGraph] = useState(null)
