@@ -62,7 +62,7 @@ Run the Celery worker in a second terminal:
 ```powershell
 cd backend
 .venv\Scripts\activate
-celery -A app.workers.ingest_task.celery_app worker --loglevel=info
+celery -A app.core.celery.celery_app worker --loglevel=info
 ```
 
 On Windows, the backend config defaults Celery to the `solo` worker pool because Celery's default prefork pool is not supported reliably there.

@@ -31,6 +31,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.config import get_settings
 from app.core import storage
 from app.models.evidence import EvidencePackage as EvidencePackageModel
 from app.models.match import Match, MatchSegment
@@ -314,7 +315,7 @@ class EvidenceService:
         if existing.scalar_one_or_none() is not None:
             raise EvidenceError(f"Evidence package already exists for match {match_id}")
 
-        work_dir = Path(f"/tmp/sports-ip/evidence_{match_id}")
+        work_dir = get_settings().temp_root / f"evidence_{match_id}"
         try:
             work_dir.mkdir(parents=True, exist_ok=True)
             result = await db.execute(

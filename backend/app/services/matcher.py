@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.redis import redis_client
+from app.models.alert import Alert
 from app.models.asset import Asset
 from app.models.match import Match, MatchSegment
 from app.schemas.fingerprint import FingerprintMatch
@@ -140,6 +141,7 @@ class MatcherService:
             if fused is None:
                 return None
 
+            alert_id = str(uuid4())
             async with db.begin():
                 match = Match(
                     id=str(uuid4()),
@@ -162,6 +164,21 @@ class MatcherService:
                 db.add(match)
                 await db.flush()
 
+                alert = Alert(
+                    id=alert_id,
+                    asset_id=str(fused.asset_id),
+                    status="open",
+                    severity_score=fused.confidence,
+                    severity_label=fused.severity,
+                    match_type=fused.match_type,
+                    confidence=fused.confidence,
+                    infringing_url=candidate.source_url,
+                    platform=candidate.platform,
+                    ai_reasoning="Generated from automated match scan.",
+                    notified_email=False,
+                )
+                db.add(alert)
+
                 for fp in fused.fp_matches:
                     segment = MatchSegment(
                         id=str(uuid4()),
@@ -177,6 +194,7 @@ class MatcherService:
                     db.add(segment)
 
             payload = {
+                "alert_id": alert_id,
                 "match_id": str(match.id),
                 "asset_id": str(fused.asset_id),
                 "severity": fused.severity,

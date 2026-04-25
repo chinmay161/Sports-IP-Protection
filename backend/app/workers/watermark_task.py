@@ -2,12 +2,12 @@ import asyncio
 import logging
 from uuid import UUID
 
+from app.core.celery import celery_app
 from app.core.config import get_settings
 from app.db.session import SessionLocal
 from app.models.asset import Asset
 from app.services.asset import refresh_aggregate_status
 from app.services.watermark import WatermarkService, decode_watermark_key
-from app.workers.ingest_task import celery_app
 
 
 logger = logging.getLogger(__name__)
