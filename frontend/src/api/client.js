@@ -106,6 +106,13 @@ export function triggerIngest(assetId) {
   return request(`/assets/${assetId}/ingest`, { method: "POST" })
 }
 
+export async function uploadAssetFromUrl({ url, title, description }) {
+  return request(`/assets/from-url`, {
+    method: "POST",
+    body: JSON.stringify({ url, title, description: description ?? null }),
+  })
+}
+
 // ---------------------------------------------------------------------------
 // Case management
 // ---------------------------------------------------------------------------
