@@ -18,6 +18,7 @@ from app.db.milvus import ensure_collection
 from app.db.session import init_db
 from app.services.events import close_redis  # NEW
 from app.workers.event_subscriber import run_event_subscriber
+from app.api.visual import router as visual_router
 
 
 logger = logging.getLogger(__name__)
@@ -64,6 +65,8 @@ app.include_router(alerts_router)
 app.include_router(propagation_router, prefix="/propagation", tags=["propagation"])
 app.include_router(stats_router)
 app.include_router(ws_router)  # NEW
+app.include_router(visual_router)
+
 LOCAL_ARTIFACT_ROOT.mkdir(parents=True, exist_ok=True)
 app.mount("/files", StaticFiles(directory=str(LOCAL_ARTIFACT_ROOT)), name="files")
 

@@ -206,3 +206,23 @@ export function scanAsset(assetId, { maxPerPlatform = 5 } = {}) {
 export function getHealth() {
   return request("/health")
 }
+
+// ---------------------------------------------------------------------------
+// Visual discovery / Lookalike
+// ---------------------------------------------------------------------------
+
+export function listVisualCandidates(assetId, { limit = 100 } = {}) {
+  const params = new URLSearchParams({ limit })
+  return request(`/assets/${assetId}/visual-candidates?${params}`)
+}
+
+export function triggerVisualDiscovery(assetId, { query = "", maxCandidates = 25 } = {}) {
+  return request(`/assets/${assetId}/visual-discover`, {
+    method: "POST",
+    body: JSON.stringify({ query, max_candidates: maxCandidates }),
+  })
+}
+
+export function dismissVisualCandidate(candidateId) {
+  return request(`/visual/candidates/${candidateId}`, { method: "DELETE" })
+}

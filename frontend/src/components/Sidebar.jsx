@@ -5,6 +5,7 @@ const NAV = [
   { id: "alerts",      label: "Alerts",      icon: "!", disabled: false },
   { id: "detections",  label: "Detections",  icon: "◉", disabled: false },
   { id: "propagation", label: "Propagation", icon: "✦", disabled: false },
+  { id: "lookalike",   label: "Lookalike",   icon: "◈", disabled: false },
   { id: "cases",       label: "Cases",       icon: "⬢", disabled: false },
   { id: "system",      label: "System",      icon: "⚙", disabled: false },
 ]
