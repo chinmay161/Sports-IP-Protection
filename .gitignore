@@ -56,3 +56,7 @@ frontend/.vite/
 logs/
 tmp/
 temp/
+# SQLite local state
+backend/sports_ip.db
+*.sqlite
+*.sqlite3
