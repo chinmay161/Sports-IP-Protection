@@ -60,3 +60,7 @@ temp/
 backend/sports_ip.db
 *.sqlite
 *.sqlite3
+
+# Backend local artifacts
+backend/.tmp/
+backend/media_store/

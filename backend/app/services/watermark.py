@@ -18,15 +18,11 @@ from scipy.fft import dctn, idctn
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import storage
 from app.core.config import get_settings
 from app.db.session import SessionLocal
 from app.models.watermark import WatermarkRegistry
 from app.schemas.watermark import WatermarkDetection, WatermarkResult
-
-try:
-    import boto3
-except ImportError:  # pragma: no cover - exercised only when dependency is absent
-    boto3 = None
 
 try:
     import ffmpeg
@@ -354,21 +350,7 @@ class WatermarkService:
         await self._run_blocking(_run)
 
     async def _upload_to_s3(self, local_path: Path, s3_key: str) -> None:
-        if boto3 is None:
-            raise WatermarkError("boto3 is required for S3 watermark uploads")
-        if not self.settings.s3_bucket_name:
-            raise WatermarkError("S3_BUCKET_NAME is required for watermark uploads")
-
-        def _upload() -> None:
-            kwargs: dict[str, str] = {}
-            if self.settings.aws_region:
-                kwargs["region_name"] = self.settings.aws_region
-            if self.settings.s3_endpoint_url:
-                kwargs["endpoint_url"] = self.settings.s3_endpoint_url
-            client = boto3.client("s3", **kwargs)
-            client.upload_file(str(local_path), self.settings.s3_bucket_name, s3_key)
-
-        await self._run_blocking(_upload)
+        await self._run_blocking(storage.upload_file, local_path, s3_key)
 
     async def _download_clip(self, url: str, output_path: Path) -> None:
         if ffmpeg is None:

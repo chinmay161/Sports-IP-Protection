@@ -13,6 +13,7 @@ import PropagationTimeline from "./PropagationTimeline.jsx"
 
 const SEVERITY_RANK = { critical: 0, high: 1, medium: 2, low: 3 }
 
+
 function formatWhen(iso) {
   if (!iso) return ""
   return new Date(iso).toLocaleString(undefined, {

@@ -1,11 +1,19 @@
 import asyncio
 import re
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 
 from app.services import crawler
-from app.services.crawler import CrawlerError, TikTokMockAdapter, YouTubeMockAdapter
+from app.services.crawler import CandidateVideo, CrawlerError, CrawlerService, TikTokMockAdapter, YouTubeMockAdapter
+
+
+@pytest.fixture(autouse=True)
+def clear_settings_cache():
+    crawler.get_settings.cache_clear()
+    yield
+    crawler.get_settings.cache_clear()
 
 
 def test_youtube_platform_and_url_format() -> None:
@@ -48,6 +56,123 @@ def test_crawl_all_all_platforms_represented() -> None:
     results = asyncio.run(crawler.crawl_all("test", 10))
 
     assert {"youtube", "tiktok", "telegram", "web"} <= {candidate.platform for candidate in results}
+
+
+def test_crawler_defaults_to_mock_mode() -> None:
+    service = CrawlerService()
+
+    assert service.mode == "mock"
+    assert service.adapters.keys() == {"youtube", "tiktok", "telegram", "web"}
+    assert isinstance(service.adapters["youtube"], YouTubeMockAdapter)
+
+
+def test_crawler_can_use_real_mode() -> None:
+    service = CrawlerService(mode="real")
+
+    assert service.mode == "real"
+    assert service.adapters.keys() == {"youtube", "tiktok", "telegram", "web"}
+    assert not isinstance(service.adapters["youtube"], YouTubeMockAdapter)
+
+
+def test_crawler_rejects_unknown_mode() -> None:
+    with pytest.raises(CrawlerError):
+        CrawlerService(mode="mystery")
+
+
+def test_real_mode_delegates_query_to_search_adapter() -> None:
+    class FakeSearchAdapter:
+        async def search(self, query: str, max_results: int):
+            return [
+                CandidateVideo(
+                    source_url=f"https://example.com/{query}/{max_results}",
+                    platform="web",
+                    channel="example.com",
+                    view_count=None,
+                    duration_ms=None,
+                    geo_country=None,
+                    thumbnail_url=None,
+                    uploaded_at=None,
+                )
+            ]
+
+    service = CrawlerService(mode="real")
+    service.adapters = {"web": FakeSearchAdapter()}
+
+    results = asyncio.run(service.crawl("web", "championship", 2))
+
+    assert results[0].source_url == "https://example.com/championship/2"
+
+
+def test_youtube_metadata_normalizes_flat_search_result() -> None:
+    candidate = crawler._metadata_to_candidate(
+        {
+            "id": "abc123XYZ90",
+            "duration": 12,
+            "channel": "Sports Channel",
+            "view_count": 50,
+        },
+        "youtube",
+    )
+
+    assert candidate is not None
+    assert candidate.source_url == "https://www.youtube.com/watch?v=abc123XYZ90"
+    assert candidate.duration_ms == 12_000
+
+
+def test_hybrid_discovery_combines_and_deduplicates(monkeypatch: pytest.MonkeyPatch) -> None:
+    asset_id = "00000000-0000-0000-0000-000000000001"
+
+    async def fake_search(self, query: str, max_per_platform: int):
+        return [
+            CandidateVideo(
+                source_url="https://example.test/shared.mp4",
+                platform="web",
+                channel=None,
+                view_count=None,
+                duration_ms=None,
+                geo_country=None,
+                thumbnail_url=None,
+                uploaded_at=None,
+            )
+        ]
+
+    async def fake_visual(self, query: str, received_asset_id):
+        assert str(received_asset_id) == asset_id
+        return [
+            CandidateVideo(
+                source_url="https://example.test/shared.mp4",
+                platform="web",
+                channel=None,
+                view_count=None,
+                duration_ms=None,
+                geo_country=None,
+                thumbnail_url="https://example.test/thumb.jpg",
+                uploaded_at=None,
+            ),
+            CandidateVideo(
+                source_url="https://example.test/visual.mp4",
+                platform="web",
+                channel=None,
+                view_count=None,
+                duration_ms=None,
+                geo_country=None,
+                thumbnail_url="https://example.test/visual.jpg",
+                uploaded_at=None,
+            ),
+        ]
+
+    monkeypatch.setenv("CRAWLER_DISCOVERY_MODE", "hybrid")
+    crawler.get_settings.cache_clear()
+    monkeypatch.setattr(CrawlerService, "_crawl_search", fake_search)
+    monkeypatch.setattr(CrawlerService, "_crawl_visual", fake_visual)
+    service = CrawlerService(mode="real")
+
+    results = asyncio.run(service.crawl_all("final", asset_id=UUID(asset_id)))
+
+    assert {candidate.source_url for candidate in results} == {
+        "https://example.test/shared.mp4",
+        "https://example.test/visual.mp4",
+    }
 
 
 def test_download_clip_returns_existing_file(tmp_path: Path) -> None:

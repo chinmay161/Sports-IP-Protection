@@ -129,26 +129,35 @@ class FingerprintService:
             duration_ms=duration_ms,
         )
 
-    async def match(self, video_path: str, threshold: int = 10) -> list[FingerprintMatch]:
+    async def match(
+        self,
+        video_path: str,
+        threshold: int = 10,
+        asset_ids: list[UUID] | None = None,
+    ) -> list[FingerprintMatch]:
         frame_vectors, audio_vectors, _ = await self._extract_fingerprints(
             video_path=video_path,
             asset_key=f"candidate-{uuid4()}",
         )
 
-        frame_hits = await self._search_vectors(frame_vectors, threshold=threshold)
-        audio_hits = await self._search_vectors(audio_vectors, threshold=threshold)
+        frame_hits = await self._search_vectors(frame_vectors, threshold=threshold, asset_ids=asset_ids)
+        audio_hits = await self._search_vectors(audio_vectors, threshold=threshold, asset_ids=asset_ids)
+
+        frame_min_length = _dynamic_run_minimum(FRAME_FUSED_THRESHOLD, len(frame_vectors), floor=3)
+        audio_min_length = _dynamic_run_minimum(AUDIO_RUN_THRESHOLD, len(audio_vectors), floor=5)
+        strong_frame_minimum = _dynamic_run_minimum(FRAME_RUN_THRESHOLD, len(frame_vectors), floor=5)
 
         frame_runs = self._build_runs(
             matches_by_asset=frame_hits,
             kind="frame",
             expected_step_ms=FRAME_INTERVAL_MS,
-            min_length=FRAME_FUSED_THRESHOLD,
+            min_length=frame_min_length,
         )
         audio_runs = self._build_runs(
             matches_by_asset=audio_hits,
             kind="audio",
             expected_step_ms=AUDIO_HOP_MS,
-            min_length=AUDIO_RUN_THRESHOLD,
+            min_length=audio_min_length,
         )
 
         results: list[FingerprintMatch] = []
@@ -156,7 +165,7 @@ class FingerprintService:
             asset_frame_runs = frame_runs.get(asset_id, [])
             asset_audio_runs = audio_runs.get(asset_id, [])
 
-            strong_frame = self._select_best_run(asset_frame_runs, minimum=FRAME_RUN_THRESHOLD)
+            strong_frame = self._select_best_run(asset_frame_runs, minimum=strong_frame_minimum)
             if strong_frame is not None:
                 results.append(
                     FingerprintMatch(
@@ -371,22 +380,25 @@ class FingerprintService:
         self,
         vectors: list[FingerprintVector],
         threshold: int,
+        asset_ids: list[UUID] | None = None,
     ) -> dict[str, list[MatchPoint]]:
         matches_by_asset: dict[str, list[MatchPoint]] = {}
         collection = self._get_collection()
+        expr = _search_expr(kind=vectors[0].kind, asset_ids=asset_ids) if vectors else ""
         for vector in vectors:
             search_hits = await self._run_blocking(
                 collection.search,
                 data=[vector.vector],
                 anns_field="hash_vector",
                 param={"metric_type": "HAMMING", "params": {}},
-                limit=10,
-                expr=f'type == "{vector.kind}"',
+                limit=100,
+                expr=expr or f'type == "{vector.kind}"',
                 output_fields=["asset_id", "timestamp_ms"],
             )
             if not search_hits:
                 continue
 
+            best_by_asset: dict[str, tuple[float, int]] = {}
             for hit in search_hits[0]:
                 distance = getattr(hit, "distance", None)
                 if distance is None or distance > threshold:
@@ -396,8 +408,12 @@ class FingerprintService:
                 timestamp_ms = entity.get("timestamp_ms") if entity is not None else hit.get("timestamp_ms")
                 if asset_id is None or timestamp_ms is None:
                     continue
-                matches_by_asset.setdefault(str(asset_id), []).append(
-                    MatchPoint(candidate_ms=vector.timestamp_ms, stored_ms=int(timestamp_ms))
+                current = best_by_asset.get(str(asset_id))
+                if current is None or distance < current[0]:
+                    best_by_asset[str(asset_id)] = (float(distance), int(timestamp_ms))
+            for asset_id, (_, timestamp_ms) in best_by_asset.items():
+                matches_by_asset.setdefault(asset_id, []).append(
+                    MatchPoint(candidate_ms=vector.timestamp_ms, stored_ms=timestamp_ms)
                 )
         return matches_by_asset
 
@@ -456,7 +472,10 @@ class FingerprintService:
         audio_run: MatchRun | None,
         match_type: str,
     ) -> float:
-        frame_score = min(1.0, (frame_run.count / FRAME_RUN_THRESHOLD) * 0.7 + (frame_run.density * 0.2))
+        frame_denominator = FRAME_RUN_THRESHOLD
+        if frame_run.count < FRAME_RUN_THRESHOLD and frame_run.density >= 0.85:
+            frame_denominator = max(5, frame_run.count)
+        frame_score = min(1.0, (frame_run.count / frame_denominator) * 0.7 + (frame_run.density * 0.2))
         if match_type == "frame" or audio_run is None:
             return round(min(1.0, 0.1 + frame_score), 4)
 
@@ -515,6 +534,20 @@ def detect_consecutive_runs(
     if final_run.count >= min_length:
         runs.append(final_run)
     return runs
+
+
+def _dynamic_run_minimum(default: int, available: int, floor: int) -> int:
+    if available <= 0:
+        return default
+    return min(default, max(floor, math.ceil(available * 0.75)))
+
+
+def _search_expr(kind: str, asset_ids: list[UUID] | None) -> str:
+    base = f'type == "{kind}"'
+    if not asset_ids:
+        return base
+    asset_filter = " or ".join(f'asset_id == "{asset_id}"' for asset_id in asset_ids)
+    return f"{base} and ({asset_filter})"
 
 
 def _run_from_points(asset_id: str, kind: str, points: list[MatchPoint], expected_step_ms: int) -> MatchRun:

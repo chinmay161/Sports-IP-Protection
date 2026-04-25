@@ -126,7 +126,7 @@ def test_match_ignores_short_runs(monkeypatch: pytest.MonkeyPatch) -> None:
 
     frame_vectors = [
         FingerprintVector(timestamp_ms=index * FRAME_INTERVAL_MS, vector=bytes([7]) * 8, kind="frame")
-        for index in range(20)
+        for index in range(4)
     ]
 
     async def fake_extract(*, video_path: str, asset_key: str):
@@ -142,6 +142,33 @@ def test_match_ignores_short_runs(monkeypatch: pytest.MonkeyPatch) -> None:
     matches = asyncio.run(service.match(video_path="candidate.mp4"))
 
     assert matches == []
+
+
+def test_match_accepts_short_dense_frame_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    collection = FakeCollection()
+    service = FingerprintService(collection=collection)
+    asset_id = str(uuid4())
+
+    frame_vectors = [
+        FingerprintVector(timestamp_ms=index * FRAME_INTERVAL_MS, vector=bytes([index]) * 8, kind="frame")
+        for index in range(8)
+    ]
+
+    async def fake_extract(*, video_path: str, asset_key: str):
+        assert video_path == "short.mp4"
+        return frame_vectors, [], 8400
+
+    monkeypatch.setattr(service, "_extract_fingerprints", fake_extract)
+    collection.search_responses = [
+        [[FakeHit(asset_id=asset_id, timestamp_ms=vector.timestamp_ms, distance=0)]]
+        for vector in frame_vectors
+    ]
+
+    matches = asyncio.run(service.match(video_path="short.mp4"))
+
+    assert matches
+    assert matches[0].asset_id == UUID(asset_id)
+    assert matches[0].confidence >= 0.7
 
 
 def test_consecutive_run_detection() -> None:
@@ -188,6 +215,39 @@ def test_milvus_search_requests_only_metadata(monkeypatch: pytest.MonkeyPatch) -
     asyncio.run(service.match(video_path="candidate.mp4"))
 
     assert collection.search_requests[0]["output_fields"] == ["asset_id", "timestamp_ms"]
+
+
+def test_match_can_filter_search_by_asset_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    collection = FakeCollection()
+    service = FingerprintService(collection=collection)
+    asset_id = uuid4()
+    vectors = [FingerprintVector(timestamp_ms=0, vector=b"\x01" * 8, kind="frame")]
+
+    async def fake_extract(*, video_path: str, asset_key: str):
+        return vectors, [], 1000
+
+    monkeypatch.setattr(service, "_extract_fingerprints", fake_extract)
+
+    asyncio.run(service.match(video_path="candidate.mp4", asset_ids=[asset_id]))
+
+    assert f'asset_id == "{asset_id}"' in collection.search_requests[0]["expr"]
+
+
+def test_search_vectors_keeps_best_hit_per_asset_per_vector() -> None:
+    collection = FakeCollection()
+    service = FingerprintService(collection=collection)
+    asset_id = str(uuid4())
+    vectors = [FingerprintVector(timestamp_ms=0, vector=b"\x01" * 8, kind="frame")]
+    collection.search_responses = [
+        [[
+            FakeHit(asset_id=asset_id, timestamp_ms=1000, distance=5),
+            FakeHit(asset_id=asset_id, timestamp_ms=0, distance=0),
+        ]]
+    ]
+
+    hits = asyncio.run(service._search_vectors(vectors, threshold=10))
+
+    assert hits[asset_id] == [MatchPoint(candidate_ms=0, stored_ms=0)]
 
 
 def test_temp_directory_cleanup_on_success(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

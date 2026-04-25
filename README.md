@@ -28,8 +28,19 @@ The backend reads these environment variables:
 - `MILVUS_COLLECTION_NAME`
 - `MILVUS_REQUIRED`
 - `TEMP_ROOT`
+- `CRAWLER_MODE`
+- `CRAWLER_DISCOVERY_MODE`
+- `CRAWLER_WATCHLIST_URLS`
+- `VISUAL_CRAWL_MAX_PAGES`
+- `VISUAL_CRAWL_MAX_IMAGES`
+- `VISUAL_CRAWL_MAX_CANDIDATES`
+- `VISUAL_PHASH_THRESHOLD`
 
 Local defaults in `.env.example` use SQLite for quick startup. For a Postgres setup, replace `DATABASE_URL` with an async SQLAlchemy DSN such as `postgresql+asyncpg://postgres:postgres@localhost:5432/sports_ip`.
+
+The crawler defaults to generated mock candidates with `CRAWLER_MODE=mock`. Set `CRAWLER_MODE=real` to enable live discovery and downloads; YouTube discovery and most downloads use `yt-dlp`, while web/TikTok/Telegram discovery uses search-result URLs that feed into the same download path.
+
+Real mode can also use visual discovery with `CRAWLER_DISCOVERY_MODE=visual` or `hybrid`. Visual discovery indexes protected asset frames during ingest, crawls configured watchlists plus web result pages, compares thumbnails/previews with pHash and optional local CLIP embeddings, then forwards only likely visual candidates to the matcher.
 
 Required local services:
 
