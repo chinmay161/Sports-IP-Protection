@@ -1,74 +1,130 @@
-// src/components/DetectionsPage.jsx
+// src/components/LookalikePage.jsx
 import { useCallback, useEffect, useMemo, useState } from "react"
 
-import { listDetections } from "../api/client.js"
-import DetectionRow from "./DetectionRow.jsx"
+import {
+  listAssets,
+  listVisualCandidates,
+  triggerVisualDiscovery,
+} from "../api/client.js"
+import LookalikeCandidate from "./LookalikeCandidate.jsx"
+import LookalikeComparison from "./LookalikeComparison.jsx"
 
-const SEVERITY_RANK = { critical: 0, high: 1, medium: 2, low: 3 }
 const PLATFORMS = ["all", "youtube", "tiktok", "telegram", "web"]
-const SEVERITIES = ["all", "critical", "high", "medium", "low"]
 
-export default function DetectionsPage({ onNavigate, onSelectMatch }) {
-  const [detections, setDetections] = useState([])
-  const [loading, setLoading] = useState(true)
+export default function LookalikePage() {
+  const [assets, setAssets] = useState([])
+  const [assetsLoading, setAssetsLoading] = useState(true)
+  const [selectedAssetId, setSelectedAssetId] = useState(null)
+
+  const [candidates, setCandidates] = useState([])
+  const [candidatesLoading, setCandidatesLoading] = useState(false)
   const [error, setError] = useState(null)
-  const [platformFilter, setPlatformFilter] = useState("all")
-  const [severityFilter, setSeverityFilter] = useState("all")
 
-  const fetchDetections = useCallback(async () => {
+  const [discovering, setDiscovering] = useState(false)
+  const [discoverMessage, setDiscoverMessage] = useState(null)
+
+  const [platformFilter, setPlatformFilter] = useState("all")
+
+  // Comparison modal state
+  const [comparing, setComparing] = useState(null) // { candidate }
+
+  useEffect(() => {
+    let cancelled = false
+    listAssets({ limit: 50 })
+      .then((res) => {
+        if (cancelled) return
+        const ready = (res.items ?? res ?? []).filter((a) => a.fingerprint_status === "ready")
+        setAssets(ready)
+        if (ready.length > 0) setSelectedAssetId(ready[0].id)
+      })
+      .catch((exc) => !cancelled && setError(exc.message))
+      .finally(() => !cancelled && setAssetsLoading(false))
+    return () => { cancelled = true }
+  }, [])
+
+  const fetchCandidates = useCallback(async (assetId) => {
+    if (!assetId) return
+    setCandidatesLoading(true)
+    setError(null)
     try {
-      const res = await listDetections({ limit: 100 })
-      setDetections(res.items ?? [])
-      setError(null)
+      const res = await listVisualCandidates(assetId)
+      setCandidates(res.items ?? [])
     } catch (exc) {
       setError(exc.message)
     } finally {
-      setLoading(false)
+      setCandidatesLoading(false)
     }
   }, [])
 
   useEffect(() => {
-    fetchDetections()
-  }, [fetchDetections])
+    if (selectedAssetId) fetchCandidates(selectedAssetId)
+  }, [selectedAssetId, fetchCandidates])
+
+  const handleDiscover = async () => {
+    if (!selectedAssetId) return
+    setDiscovering(true)
+    setDiscoverMessage(null)
+    try {
+      const res = await triggerVisualDiscovery(selectedAssetId, { query: "sports highlights" })
+      setDiscoverMessage({
+        kind: "success",
+        text: `Discovery queued (task ${res.task_id?.slice(0, 8)}...). Refresh in 30 seconds.`,
+      })
+    } catch (exc) {
+      setDiscoverMessage({ kind: "error", text: exc.message })
+    } finally {
+      setDiscovering(false)
+      setTimeout(() => setDiscoverMessage(null), 8000)
+    }
+  }
+
+  const handleDismissed = (candidateId) => {
+    setCandidates((prev) => prev.filter((c) => c.id !== candidateId))
+  }
 
   const filtered = useMemo(() => {
-    let items = [...detections]
-    if (platformFilter !== "all") items = items.filter((d) => d.platform === platformFilter)
-    if (severityFilter !== "all") items = items.filter((d) => d.severity === severityFilter)
-    items.sort((a, b) => {
-      const sev = (SEVERITY_RANK[a.severity] ?? 9) - (SEVERITY_RANK[b.severity] ?? 9)
-      if (sev !== 0) return sev
-      return new Date(b.detected_at) - new Date(a.detected_at)
-    })
-    return items
-  }, [detections, platformFilter, severityFilter])
+    if (platformFilter === "all") return candidates
+    return candidates.filter((c) => c.platform === platformFilter)
+  }, [candidates, platformFilter])
 
-  const counts = useMemo(() => {
-    const out = { critical: 0, high: 0, medium: 0, low: 0 }
-    detections.forEach((d) => {
-      if (out[d.severity] !== undefined) out[d.severity]++
+  const stats = useMemo(() => {
+    const out = { total: candidates.length, high: 0, medium: 0, low: 0 }
+    candidates.forEach((c) => {
+      if (c.visual_score >= 0.8) out.high++
+      else if (c.visual_score >= 0.5) out.medium++
+      else out.low++
     })
     return out
-  }, [detections])
+  }, [candidates])
 
-  const handleViewPropagation = (detection) => {
-    onSelectMatch?.(detection.id)
-    onNavigate?.("propagation")
-  }
+  const selectedAsset = assets.find((a) => a.id === selectedAssetId)
 
   return (
     <section className="flex h-full flex-col">
       <header className="flex flex-wrap items-center gap-3 border-b border-slate-800 px-6 py-4">
-        <h1 className="text-lg font-semibold text-slate-100">Detections</h1>
+        <h1 className="text-lg font-semibold text-slate-100">Lookalike</h1>
 
         <div className="flex items-center gap-3 text-xs">
-          {counts.critical > 0 && <span className="text-red-300">{counts.critical} critical</span>}
-          {counts.high > 0 && <span className="text-orange-300">{counts.high} high</span>}
-          {counts.medium > 0 && <span className="text-yellow-300">{counts.medium} medium</span>}
-          {counts.low > 0 && <span className="text-slate-400">{counts.low} low</span>}
+          {stats.high > 0 && <span className="text-red-300">{stats.high} strong</span>}
+          {stats.medium > 0 && <span className="text-orange-300">{stats.medium} medium</span>}
+          {stats.low > 0 && <span className="text-slate-400">{stats.low} weak</span>}
+          <span className="text-slate-500">·</span>
+          <span className="text-slate-400">{stats.total} total</span>
         </div>
 
         <div className="ml-auto flex items-center gap-2">
+          {assets.length > 0 && (
+            <select
+              value={selectedAssetId ?? ""}
+              onChange={(e) => setSelectedAssetId(e.target.value)}
+              className="rounded-md border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-200"
+            >
+              {assets.map((a) => (
+                <option key={a.id} value={a.id}>{a.title}</option>
+              ))}
+            </select>
+          )}
+
           <select
             value={platformFilter}
             onChange={(e) => setPlatformFilter(e.target.value)}
@@ -78,56 +134,89 @@ export default function DetectionsPage({ onNavigate, onSelectMatch }) {
               <option key={p} value={p}>{p === "all" ? "All platforms" : p}</option>
             ))}
           </select>
-          <select
-            value={severityFilter}
-            onChange={(e) => setSeverityFilter(e.target.value)}
-            className="rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-200"
-          >
-            {SEVERITIES.map((s) => (
-              <option key={s} value={s}>{s === "all" ? "All severities" : s}</option>
-            ))}
-          </select>
+
           <button
-            onClick={fetchDetections}
+            onClick={() => fetchCandidates(selectedAssetId)}
             className="rounded-md border border-slate-700 px-3 py-1 text-xs text-slate-200 hover:border-slate-500"
           >
             Refresh
           </button>
+
+          <button
+            onClick={handleDiscover}
+            disabled={discovering || !selectedAssetId}
+            className="rounded-md bg-cyan-500 px-3 py-1 text-xs font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:opacity-50"
+          >
+            {discovering ? "Discovering..." : "Discover lookalikes"}
+          </button>
         </div>
       </header>
 
-      <div className="flex-1 space-y-3 overflow-y-auto p-6">
+      <div className="flex-1 overflow-y-auto p-6">
+        {discoverMessage && (
+          <div className={`mb-4 rounded border px-3 py-2 text-xs ${
+            discoverMessage.kind === "success"
+              ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+              : "border-red-500/40 bg-red-500/10 text-red-300"
+          }`}>
+            {discoverMessage.text}
+          </div>
+        )}
+
         {error && (
-          <p className="rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+          <p className="mb-4 rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-300">
             {error}
           </p>
         )}
 
-        {loading ? (
-          <div className="py-8 text-center text-sm text-slate-500">Loading detections...</div>
+        {selectedAsset && (
+          <div className="mb-4 text-xs text-slate-400">
+            Showing visual lookalikes for: <span className="font-semibold text-slate-200">{selectedAsset.title}</span>
+          </div>
+        )}
+
+        {assetsLoading || candidatesLoading ? (
+          <div className="py-8 text-center text-sm text-slate-500">Loading...</div>
+        ) : assets.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-slate-800 p-12 text-center">
+            <div className="text-sm text-slate-400">No ready assets to scan.</div>
+          </div>
         ) : filtered.length === 0 ? (
           <div className="rounded-xl border border-dashed border-slate-800 p-12 text-center">
             <div className="text-sm text-slate-400">
-              {detections.length === 0
-                ? "No detections yet."
-                : "No detections match the current filters."}
+              {candidates.length === 0
+                ? "No lookalikes found yet for this asset."
+                : "No candidates match the current filter."}
             </div>
-            {detections.length === 0 && (
+            {candidates.length === 0 && (
               <div className="mt-2 text-xs text-slate-500">
-                Run a scan from the Assets page to populate detections.
+                Click "Discover lookalikes" to search the watchlists for visually similar content.
               </div>
             )}
           </div>
         ) : (
-          filtered.map((d) => (
-            <DetectionRow
-              key={d.id}
-              detection={d}
-              onViewPropagation={handleViewPropagation}
-            />
-          ))
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {filtered.map((c) => (
+              <LookalikeCandidate
+                key={c.id}
+                candidate={c}
+                onDismissed={handleDismissed}
+                onCompare={(cand) => setComparing({ candidate: cand })}
+              />
+            ))}
+          </div>
         )}
       </div>
+
+      {/* Comparison modal */}
+      {comparing && (
+        <LookalikeComparison
+          asset={selectedAsset}
+          candidate={comparing.candidate}
+          onClose={() => setComparing(null)}
+          onDismissed={handleDismissed}
+        />
+      )}
     </section>
   )
 }

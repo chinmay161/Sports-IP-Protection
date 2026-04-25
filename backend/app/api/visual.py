@@ -1,7 +1,9 @@
 # app/api/visual.py
 from uuid import UUID, uuid4
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi.responses import FileResponse
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,6 +16,8 @@ from app.schemas.visual import (
     DiscoverResponse,
     VisualCandidateList,
     VisualCandidateRead,
+    VisualFrameList,
+    VisualFrameRead,
     WatchlistCreate,
     WatchlistList,
     WatchlistRead,
@@ -21,7 +25,7 @@ from app.schemas.visual import (
 from app.workers.visual_task import discover_visual_candidates
 
 router = APIRouter(
-    prefix="",  # endpoints split between /assets/{id}/... and /visual/...
+    prefix="",
     tags=["visual-discovery"],
     dependencies=[Depends(verify_token)],
 )
@@ -149,3 +153,65 @@ async def delete_watchlist(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Watchlist not found")
     await db.delete(row)
     await db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Asset Frames (NEW)
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/assets/{asset_id}/frames",
+    response_model=VisualFrameList,
+)
+async def list_asset_frames(
+    asset_id: UUID,
+    db: AsyncSession = Depends(get_db_session),
+) -> VisualFrameList:
+    """List visual frames extracted from an asset during indexing."""
+    from app.models.visual import VisualAssetFrame  # local import to avoid cycle issues
+
+    result = await db.execute(
+        select(VisualAssetFrame)
+        .where(VisualAssetFrame.asset_id == str(asset_id))
+        .order_by(VisualAssetFrame.timestamp_ms.asc())
+    )
+    rows = list(result.scalars().all())
+
+    return VisualFrameList(
+        asset_id=asset_id,
+        total=len(rows),
+        items=[
+            VisualFrameRead(
+                id=UUID(r.id),
+                asset_id=UUID(r.asset_id),
+                timestamp_ms=r.timestamp_ms,
+                phash=r.phash,
+                has_clip_vector=r.clip_vector is not None,
+                created_at=r.created_at,
+            )
+            for r in rows
+        ],
+    )
+
+
+@router.get("/assets/{asset_id}/frames/{frame_id}/image")
+async def get_asset_frame_image(
+    asset_id: UUID,
+    frame_id: UUID,
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    """Stream a single extracted frame as a JPEG."""
+    from app.models.visual import VisualAssetFrame
+
+    frame = await db.get(VisualAssetFrame, str(frame_id))
+    if frame is None or frame.asset_id != str(asset_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Frame not found")
+
+    if not frame.frame_path:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Frame has no image on disk")
+
+    path = Path(frame.frame_path)
+    if not path.exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Frame file missing on disk")
+
+    return FileResponse(path, media_type="image/jpeg")

@@ -71,3 +71,19 @@ class WatchlistRead(BaseModel):
 class WatchlistList(BaseModel):
     total: int
     items: list[WatchlistRead]
+    
+class VisualFrameRead(BaseModel):
+    id: UUID
+    asset_id: UUID
+    timestamp_ms: int
+    phash: str
+    has_clip_vector: bool
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class VisualFrameList(BaseModel):
+    asset_id: UUID
+    total: int
+    items: list[VisualFrameRead]

@@ -21,7 +21,7 @@ function ScoreBadge({ label, value, format = "percent", className = "" }) {
   )
 }
 
-export default function LookalikeCandidate({ candidate, onDismissed }) {
+export default function LookalikeCandidate({ candidate, onDismissed, onCompare }) {
   const [imgError, setImgError] = useState(false)
   const [dismissing, setDismissing] = useState(false)
   const [error, setError] = useState(null)
@@ -40,7 +40,11 @@ export default function LookalikeCandidate({ candidate, onDismissed }) {
     }
   }
 
-  // Determine score quality for color band
+  const handleCompare = (e) => {
+    e.stopPropagation()
+    onCompare?.(candidate)
+  }
+
   const score = candidate.visual_score
   const scoreColor =
     score >= 0.8 ? "bg-red-500/15 text-red-300 border-red-500/40" :
@@ -50,8 +54,11 @@ export default function LookalikeCandidate({ candidate, onDismissed }) {
 
   return (
     <article className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900/60 transition hover:border-slate-700">
-      {/* Thumbnail */}
-      <div className="relative aspect-video overflow-hidden bg-slate-950">
+      {/* Thumbnail (clickable to compare) */}
+      <button
+        onClick={handleCompare}
+        className="relative block aspect-video w-full overflow-hidden bg-slate-950 hover:opacity-90"
+      >
         {!imgError && candidate.thumbnail_url ? (
           <img
             src={candidate.thumbnail_url}
@@ -65,17 +72,19 @@ export default function LookalikeCandidate({ candidate, onDismissed }) {
           </div>
         )}
 
-        {/* Visual score chip overlaid on thumbnail */}
         <div className={`absolute top-2 left-2 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${scoreColor}`}>
           {(score * 100).toFixed(0)}% match
         </div>
 
-        {/* Platform dot overlaid on thumbnail */}
         <div className="absolute top-2 right-2 flex items-center gap-1.5 rounded-full bg-slate-950/80 px-2 py-0.5 text-[10px] font-medium text-slate-200 backdrop-blur">
           <span className={`h-1.5 w-1.5 rounded-full ${PLATFORM_DOT[candidate.platform] ?? PLATFORM_DOT.unknown}`} />
           {candidate.platform}
         </div>
-      </div>
+
+        <div className="absolute bottom-2 right-2 rounded bg-slate-950/80 px-2 py-0.5 text-[10px] font-medium text-cyan-300 backdrop-blur opacity-0 transition group-hover:opacity-100">
+          Click to compare →
+        </div>
+      </button>
 
       {/* Body */}
       <div className="p-3">
@@ -111,13 +120,21 @@ export default function LookalikeCandidate({ candidate, onDismissed }) {
           </p>
         )}
 
-        <button
-          onClick={handleDismiss}
-          disabled={dismissing}
-          className="mt-2 w-full rounded-md border border-slate-700 px-2 py-1 text-[11px] text-slate-400 transition hover:border-red-500/50 hover:text-red-300 disabled:opacity-50"
-        >
-          {dismissing ? "Dismissing..." : "Dismiss as false positive"}
-        </button>
+        <div className="mt-2 grid grid-cols-2 gap-1">
+          <button
+            onClick={handleCompare}
+            className="rounded-md bg-cyan-500/90 px-2 py-1 text-[11px] font-semibold text-slate-950 hover:bg-cyan-400"
+          >
+            Compare
+          </button>
+          <button
+            onClick={handleDismiss}
+            disabled={dismissing}
+            className="rounded-md border border-slate-700 px-2 py-1 text-[11px] text-slate-400 transition hover:border-red-500/50 hover:text-red-300 disabled:opacity-50"
+          >
+            {dismissing ? "Dismissing..." : "Dismiss"}
+          </button>
+        </div>
       </div>
     </article>
   )

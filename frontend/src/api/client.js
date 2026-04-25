@@ -226,3 +226,13 @@ export function triggerVisualDiscovery(assetId, { query = "", maxCandidates = 25
 export function dismissVisualCandidate(candidateId) {
   return request(`/visual/candidates/${candidateId}`, { method: "DELETE" })
 }
+
+export function listAssetFrames(assetId) {
+  return request(`/assets/${assetId}/frames`)
+}
+
+export function getAssetFrameImageUrl(assetId, frameId) {
+  // Plain URL builder — used in <img src=...> tags directly.
+  // Goes through the Vite proxy like all our other /api calls.
+  return `/api/assets/${assetId}/frames/${frameId}/image`
+}
