@@ -1,4 +1,4 @@
-// src/components/LookalikePage.jsx
+﻿// src/components/LookalikePage.jsx
 import { useCallback, useEffect, useMemo, useState } from "react"
 
 import {
@@ -7,34 +7,31 @@ import {
   triggerVisualDiscovery,
 } from "../api/client.js"
 import LookalikeCandidate from "./LookalikeCandidate.jsx"
+import LookalikeComparison from "./LookalikeComparison.jsx"
 
 const PLATFORMS = ["all", "youtube", "tiktok", "telegram", "web"]
 
 export default function LookalikePage() {
-  // Assets and selection
   const [assets, setAssets] = useState([])
   const [assetsLoading, setAssetsLoading] = useState(true)
   const [selectedAssetId, setSelectedAssetId] = useState(null)
 
-  // Candidates for the selected asset
   const [candidates, setCandidates] = useState([])
   const [candidatesLoading, setCandidatesLoading] = useState(false)
   const [error, setError] = useState(null)
 
-  // Discovery
   const [discovering, setDiscovering] = useState(false)
   const [discoverMessage, setDiscoverMessage] = useState(null)
 
-  // Filter
   const [platformFilter, setPlatformFilter] = useState("all")
 
-  // Fetch assets once
+  const [comparing, setComparing] = useState(null)
+
   useEffect(() => {
     let cancelled = false
     listAssets({ limit: 50 })
       .then((res) => {
         if (cancelled) return
-        // Only show assets that finished fingerprinting (visual indexing is part of that)
         const ready = (res.items ?? res ?? []).filter((a) => a.fingerprint_status === "ready")
         setAssets(ready)
         if (ready.length > 0) setSelectedAssetId(ready[0].id)
@@ -44,7 +41,6 @@ export default function LookalikePage() {
     return () => { cancelled = true }
   }, [])
 
-  // Fetch candidates whenever the selected asset changes
   const fetchCandidates = useCallback(async (assetId) => {
     if (!assetId) return
     setCandidatesLoading(true)
@@ -63,7 +59,6 @@ export default function LookalikePage() {
     if (selectedAssetId) fetchCandidates(selectedAssetId)
   }, [selectedAssetId, fetchCandidates])
 
-  // Handle "Discover" button
   const handleDiscover = async () => {
     if (!selectedAssetId) return
     setDiscovering(true)
@@ -184,9 +179,6 @@ export default function LookalikePage() {
         ) : assets.length === 0 ? (
           <div className="rounded-xl border border-dashed border-slate-800 p-12 text-center">
             <div className="text-sm text-slate-400">No ready assets to scan.</div>
-            <div className="mt-2 text-xs text-slate-500">
-              Upload an asset and wait for fingerprinting to complete.
-            </div>
           </div>
         ) : filtered.length === 0 ? (
           <div className="rounded-xl border border-dashed border-slate-800 p-12 text-center">
@@ -195,11 +187,6 @@ export default function LookalikePage() {
                 ? "No lookalikes found yet for this asset."
                 : "No candidates match the current filter."}
             </div>
-            {candidates.length === 0 && (
-              <div className="mt-2 text-xs text-slate-500">
-                Click "Discover lookalikes" to search the watchlists for visually similar content.
-              </div>
-            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -208,11 +195,21 @@ export default function LookalikePage() {
                 key={c.id}
                 candidate={c}
                 onDismissed={handleDismissed}
+                onCompare={(cand) => setComparing({ candidate: cand })}
               />
             ))}
           </div>
         )}
       </div>
+
+      {comparing && (
+        <LookalikeComparison
+          asset={selectedAsset}
+          candidate={comparing.candidate}
+          onClose={() => setComparing(null)}
+          onDismissed={handleDismissed}
+        />
+      )}
     </section>
   )
 }

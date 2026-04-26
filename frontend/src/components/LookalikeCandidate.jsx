@@ -41,9 +41,10 @@ export default function LookalikeCandidate({ candidate, onDismissed, onCompare }
   }
 
   const handleCompare = (e) => {
-    e.stopPropagation()
-    onCompare?.(candidate)
-  }
+  e.stopPropagation()
+  console.log("handleCompare called", { onCompare, candidate })
+  onCompare?.(candidate)
+}
 
   const score = candidate.visual_score
   const scoreColor =
