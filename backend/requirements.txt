@@ -30,6 +30,8 @@ regex>=2024.4
 tqdm>=4.66,<5
 git+https://github.com/openai/CLIP.git
 
+google-genai>=0.3,<2
+
 # Test dependencies
 pytest>=8,<10
 pytest-asyncio>=0.23,<1

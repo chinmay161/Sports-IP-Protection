@@ -236,3 +236,15 @@ export function getAssetFrameImageUrl(assetId, frameId) {
   // Goes through the Vite proxy like all our other /api calls.
   return `/api/assets/${assetId}/frames/${frameId}/image`
 }
+
+// ---------------------------------------------------------------------------
+// DMCA drafting (Gemini-backed)
+// ---------------------------------------------------------------------------
+
+export function draftDmcaForAlert(alertId) {
+  return request(`/alerts/${alertId}/draft-dmca`, { method: "POST" })
+}
+
+export function draftDmcaForDetection(matchId) {
+  return request(`/detections/${matchId}/draft-dmca`, { method: "POST" })
+}

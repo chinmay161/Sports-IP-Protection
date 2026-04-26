@@ -42,6 +42,8 @@ class Settings:
     visual_crawl_max_images: int
     visual_crawl_max_candidates: int
     visual_phash_threshold: int
+    gemini_api_key: str | None
+    gemini_model: str
 
 
 @lru_cache(maxsize=1)
@@ -70,4 +72,6 @@ def get_settings() -> Settings:
         visual_crawl_max_images=int(os.getenv("VISUAL_CRAWL_MAX_IMAGES", "100")),
         visual_crawl_max_candidates=int(os.getenv("VISUAL_CRAWL_MAX_CANDIDATES", "25")),
         visual_phash_threshold=int(os.getenv("VISUAL_PHASH_THRESHOLD", "18")),
+        gemini_api_key=os.getenv("GEMINI_API_KEY"),
+        gemini_model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
     )

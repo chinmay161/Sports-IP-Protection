@@ -1,8 +1,9 @@
 // src/components/AlertCard.jsx
 import { useState } from "react"
 
-import { initiateDmca, updateAlertStatus } from "../api/client.js"
+import { draftDmcaForAlert, initiateDmca, updateAlertStatus } from "../api/client.js"
 import CasePanel from "./CasePanel.jsx"
+import DmcaDraftModal from "./DmcaDraftModal.jsx"
 import StatusBadge from "./StatusBadge.jsx"
 
 function formatWhen(iso) {
@@ -29,6 +30,7 @@ export default function AlertCard({ alert, onReplace }) {
   const [showNotice, setShowNotice] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [err, setErr] = useState(null)
+  const [dmcaModalOpen, setDmcaModalOpen] = useState(false)
 
   const run = async (action, fn) => {
     setBusy(action)
@@ -46,6 +48,27 @@ export default function AlertCard({ alert, onReplace }) {
 
   const isResolved = alert.status === "resolved"
   const isDmcaDone = alert.status === "dmca_initiated" || !!notice
+
+  // Modal hooks
+  const handleFetchDraft = () => draftDmcaForAlert(alert.id)
+  const handleSendDraft = async (_editedNotice) => {
+    // The legacy initiateDmca() endpoint is what actually persists & changes status.
+    // It generates its own templated notice on the backend, but that's fine — the
+    // important thing is the operator approved sending. The Gemini draft was the
+    // human-in-the-loop step.
+    //
+    // Future improvement: pass the edited notice through to the backend so the
+    // operator's edits are persisted. Requires extending /alerts/{id}/dmca to
+    // accept a notice override. v2 work.
+    const updated = await initiateDmca(alert.id, {
+      assetTitle: "Demo Match Highlight",
+      assetOwner: "Sports IP Protection Inc.",
+      infringingUrl: alert.infringing_url,
+      contactEmail: "legal@example.com",
+    })
+    onReplace(updated)
+    if (updated.dmca_notice) setNotice(updated.dmca_notice)
+  }
 
   return (
     <article className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 shadow-sm transition hover:border-slate-700">
@@ -115,20 +138,16 @@ export default function AlertCard({ alert, onReplace }) {
 
         {!isResolved && !isDmcaDone && (
           <button
-            onClick={() =>
-              run("dmca", () =>
-                initiateDmca(alert.id, {
-                  assetTitle: "Demo Match Highlight",
-                  assetOwner: "Sports IP Protection Inc.",
-                  infringingUrl: alert.infringing_url,
-                  contactEmail: "legal@example.com",
-                }),
-              )
-            }
+            onClick={() => setDmcaModalOpen(true)}
             disabled={busy !== null}
             className="rounded-md bg-amber-500 px-3 py-1.5 text-xs font-semibold text-slate-950 transition hover:bg-amber-400 disabled:opacity-50"
           >
-            {busy === "dmca" ? "..." : "Initiate DMCA"}
+            <span className="inline-flex items-center gap-1.5">
+              <span>Initiate DMCA</span>
+              <span className="rounded-sm bg-slate-950/30 px-1 text-[9px] font-bold tracking-wider">
+                AI
+              </span>
+            </span>
           </button>
         )}
 
@@ -174,6 +193,14 @@ export default function AlertCard({ alert, onReplace }) {
       {expanded && (
         <CasePanel alert={alert} onUpdated={onReplace} />
       )}
+
+      <DmcaDraftModal
+        open={dmcaModalOpen}
+        onClose={() => setDmcaModalOpen(false)}
+        fetchDraft={handleFetchDraft}
+        onSend={handleSendDraft}
+        contextLabel={`${alert.platform ?? "unknown"} · ${(alert.confidence * 100).toFixed(0)}% confidence · ${alert.severity_label} severity`}
+      />
     </article>
   )
 }

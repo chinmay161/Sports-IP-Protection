@@ -6,6 +6,9 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.schemas.dmca import DraftDmcaResponse
+from app.services.gemini import GeminiRateLimited, draft_dmca_notice
+
 from app.core.auth import verify_token
 from app.core.config import get_settings
 from app.db.session import get_db_session
@@ -127,6 +130,37 @@ async def initiate_dmca(
     await publish(CHANNEL_ALERT_UPDATED, {"alert_id": alert.id})
     return alert
 
+
+@router.post("/{alert_id}/draft-dmca", response_model=DraftDmcaResponse)
+async def draft_dmca_for_alert(
+    alert_id: UUID,
+    db: AsyncSession = Depends(get_db_session),
+) -> DraftDmcaResponse:
+    """Generate an AI-drafted DMCA notice for review. Does not send."""
+    alert = await get_alert(db=db, alert_id=str(alert_id))
+    if alert is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Alert not found")
+
+    asset = await db.get(Asset, alert.asset_id) if alert.asset_id else None
+
+    try:
+        result = await draft_dmca_notice(
+            platform=alert.platform,
+            source_url=alert.infringing_url,
+            detected_at=alert.created_at,
+            severity=alert.severity_label,
+            confidence=alert.confidence,
+            match_type=alert.match_type,
+            asset_title=asset.title if asset else "Protected Asset",
+            asset_description=asset.description if asset else None,
+        )
+    except GeminiRateLimited:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Gemini rate limit reached, try again in a moment",
+        )
+
+    return DraftDmcaResponse(**result)
 
 # ---------------------------------------------------------------------------
 # Case management — assignment, priority, due date

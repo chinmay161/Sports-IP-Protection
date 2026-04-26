@@ -12,6 +12,9 @@ from sqlalchemy import func, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.schemas.dmca import DraftDmcaResponse
+from app.services.gemini import GeminiRateLimited, draft_dmca_notice
+
 from app.core.auth import verify_token
 from app.core.config import get_settings
 from app.core.redis import redis_client
@@ -218,6 +221,41 @@ async def dmca_detection(
     task = evidence_generate.delay(str(match_id))
     return DmcaResponse(match_id=match_id, status="dmca_sent", task_id=task.id)
 
+@router.post(
+    "/{match_id}/draft-dmca",
+    response_model=DraftDmcaResponse,
+    dependencies=[Depends(verify_token)],
+)
+async def draft_dmca_for_detection(
+    match_id: UUID,
+    db: AsyncSession = Depends(get_db_session),
+) -> DraftDmcaResponse:
+    """Generate an AI-drafted DMCA notice for a detection. Does not send."""
+    match = await db.get(Match, str(match_id))
+    if match is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Detection not found")
+
+    asset = await db.get(Asset, match.asset_id) if match.asset_id else None
+
+    try:
+        result = await draft_dmca_notice(
+            platform=match.platform,
+            source_url=match.source_url,
+            detected_at=match.detected_at,
+            severity=match.severity,
+            confidence=match.confidence,
+            match_type=match.match_type,
+            asset_title=asset.title if asset else "Protected Asset",
+            asset_description=asset.description if asset else None,
+            view_count=match.view_count,
+        )
+    except GeminiRateLimited:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Gemini rate limit reached, try again in a moment",
+        )
+
+    return DraftDmcaResponse(**result)
 
 @router.get("/{match_id}/evidence", dependencies=[Depends(verify_token)])
 async def get_evidence_package(
