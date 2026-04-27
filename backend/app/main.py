@@ -91,9 +91,12 @@ from fastapi.staticfiles import StaticFiles
 _FRONTEND_DIST = os.getenv("FRONTEND_DIST")
 if _FRONTEND_DIST and Path(_FRONTEND_DIST).is_dir():
     _DIST = Path(_FRONTEND_DIST)
-    _ASSETS = _DIST / "assets"
-    if _ASSETS.is_dir():
-        app.mount("/assets", StaticFiles(directory=_ASSETS), name="assets")
+    # Vite is configured with base: '/static/', so the build emits
+    # /static/index-XXX.js, /static/index-XXX.css, etc.
+    # The actual files live in dist/static/.
+    _STATIC = _DIST / "static"
+    if _STATIC.is_dir():
+        app.mount("/static", StaticFiles(directory=_STATIC), name="static")
 
     @app.get("/{full_path:path}", include_in_schema=False)
     async def serve_react_app(full_path: str):

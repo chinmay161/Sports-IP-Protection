@@ -4,6 +4,11 @@ import tailwindcss from '@tailwindcss/vite'
 
 // https://vite.dev/config/
 export default defineConfig({
+  // In production, Vite emits HTML referencing /static/index-XXX.js,
+  // /static/index-XXX.css, etc. This avoids the /assets/ collision with
+  // our API route GET /assets/{asset_id}.
+  base: '/static/',
+
   plugins: [react(), tailwindcss()],
   server: {
     proxy: {
@@ -11,7 +16,6 @@ export default defineConfig({
       '/api': {
         target: 'http://127.0.0.1:8001',
         changeOrigin: true,
-        // strip the /api prefix so /api/alerts -> /alerts on the backend
         rewrite: (path) => path.replace(/^\/api/, ''),
       },
       // WebSocket -> FastAPI
