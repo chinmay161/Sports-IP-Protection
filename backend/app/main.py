@@ -91,20 +91,18 @@ from fastapi.staticfiles import StaticFiles
 _FRONTEND_DIST = os.getenv("FRONTEND_DIST")
 if _FRONTEND_DIST and Path(_FRONTEND_DIST).is_dir():
     _DIST = Path(_FRONTEND_DIST)
-    # Vite is configured with base: '/static/', so the build emits
-    # /static/index-XXX.js, /static/index-XXX.css, etc.
-    # The actual files live in dist/static/.
-    _STATIC = _DIST / "static"
-    if _STATIC.is_dir():
-        app.mount("/static", StaticFiles(directory=_STATIC), name="static")
+    # Vite is configured with base: '/static/' so HTML references
+    # /static/index-XXX.js. But Vite's output dir is still dist/assets/.
+    # We mount the assets directory under the /static URL path.
+    _ASSETS = _DIST / "assets"
+    if _ASSETS.is_dir():
+        app.mount("/static", StaticFiles(directory=_ASSETS), name="static")
 
     @app.get("/{full_path:path}", include_in_schema=False)
     async def serve_react_app(full_path: str):
-        # Serve specific files from dist if they exist (favicon, vite.svg, etc.)
         candidate = _DIST / full_path
         if full_path and candidate.is_file():
             return FileResponse(candidate)
-        # Otherwise serve index.html — React Router handles client-side routing
         return FileResponse(_DIST / "index.html")
 
 
