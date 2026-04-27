@@ -4,7 +4,9 @@
 
 import propagationFixture from "../fixtures/propagation.json"
 
-const BASE = "/api"
+// In dev, Vite proxies /api -> FastAPI at :8001.
+// In prod, FastAPI serves frontend + API on the same origin, so no /api prefix.
+const BASE = import.meta.env.PROD ? "" : "/api"
 
 // Flip to false once Dev 1's /propagation/* endpoints are live and stable.
 // Until then we fall back to the bundled fixture on 404.
