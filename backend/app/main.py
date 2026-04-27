@@ -99,9 +99,24 @@ if _FRONTEND_DIST and Path(_FRONTEND_DIST).is_dir():
 
     @app.get("/{full_path:path}", include_in_schema=False)
     async def serve_react_app(full_path: str):
+        # Don't shadow API routes — if frontend asks for an API path, return a
+        # real 404 instead of index.html. Otherwise frontend code tries to parse
+        # HTML as JSON and breaks. This also handles routes defined AFTER this
+        # one in the file (Python decorator order matters in FastAPI).
+        api_prefixes = (
+            "alerts", "detections", "assets", "propagation", "stats", "ws",
+            "health", "live-streams", "visual", "files", "static", "openapi.json",
+            "docs", "redoc",
+        )
+        if full_path.startswith(api_prefixes):
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail="Not found")
+
+        # Serve specific files from dist if they exist (favicon, vite.svg, etc.)
         candidate = _DIST / full_path
         if full_path and candidate.is_file():
             return FileResponse(candidate)
+        # Otherwise serve index.html — React Router handles client-side routing
         return FileResponse(_DIST / "index.html")
 
 
