@@ -24,12 +24,13 @@ reportlab>=4,<5
 yt-dlp>=2024.1,<2026
 geoip2>=4.8,<5
 yt-dlp>=2024.4,<2027
-torch>=2.2,<3
-torchvision>=0.17,<1
+# torch>=2.2,<3  # disabled in deployed image (CPU-only phash mode); enable for full CLIP
+# torchvision>=0.17,<1  # disabled in deployed image (CPU-only phash mode); enable for full CLIP
 ftfy>=6.2,<7
 regex>=2024.4
 tqdm>=4.66,<5
-git+https://github.com/openai/CLIP.git
+# git+https://github.com/openai/CLIP.git  # disabled in deployed image (CPU-only phash mode); enable for full CLIP
+
 
 google-genai>=0.3,<2
 google-generativeai>=0.7.0
