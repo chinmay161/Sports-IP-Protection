@@ -200,6 +200,60 @@ export function scanAsset(assetId, { maxPerPlatform = 5 } = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// Live streams
+// ---------------------------------------------------------------------------
+
+export function listLiveStreams({ status } = {}) {
+  const params = new URLSearchParams()
+  if (status && status !== "all") params.set("status", status)
+  const query = params.toString()
+  return request(`/live-streams${query ? `?${query}` : ""}`)
+}
+
+export function getLiveStream(streamId) {
+  return request(`/live-streams/${streamId}`)
+}
+
+export function registerLiveStream({ assetId, streamKey, hlsManifestUrl, s3Prefix }) {
+  return request("/live-streams/register", {
+    method: "POST",
+    body: JSON.stringify({
+      asset_id: assetId,
+      stream_key: streamKey,
+      hls_manifest_url: hlsManifestUrl,
+      s3_prefix: s3Prefix,
+    }),
+  })
+}
+
+export function endLiveStream(streamId) {
+  return request(`/live-streams/${streamId}/end`, { method: "POST" })
+}
+
+export function addLiveStreamSuspectUrls(streamId, urls) {
+  return request(`/live-streams/${streamId}/suspect-urls`, {
+    method: "POST",
+    body: JSON.stringify({ urls }),
+  })
+}
+
+export function listLiveStreamViolations(streamId, { status, limit = 50, offset = 0 } = {}) {
+  const params = new URLSearchParams({ limit, offset })
+  if (status && status !== "all") params.set("status", status)
+  return request(`/live-streams/${streamId}/violations?${params}`)
+}
+
+export function watermarkLiveSegment(streamId, { segmentName, payload }) {
+  return request(`/live-streams/${streamId}/watermark-segment`, {
+    method: "POST",
+    body: JSON.stringify({
+      segment_name: segmentName,
+      payload: Number(payload),
+    }),
+  })
+}
+
+// ---------------------------------------------------------------------------
 // System / Health
 // ---------------------------------------------------------------------------
 

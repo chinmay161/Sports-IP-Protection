@@ -14,6 +14,7 @@ from app.api.detections import router as detections_router
 from app.api.propagation import router as propagation_router
 from app.api.stats import router as stats_router
 from app.api.ws import router as ws_router  # NEW
+from app.api.live_streams import router as live_streams_router
 from app.db.milvus import ensure_collection
 from app.db.session import init_db
 from app.services.events import close_redis  # NEW
@@ -66,6 +67,7 @@ app.include_router(propagation_router, prefix="/propagation", tags=["propagation
 app.include_router(stats_router)
 app.include_router(ws_router)  # NEW
 app.include_router(visual_router)
+app.include_router(live_streams_router, prefix="/live-streams", tags=["live-streams"])
 
 LOCAL_ARTIFACT_ROOT.mkdir(parents=True, exist_ok=True)
 app.mount("/files", StaticFiles(directory=str(LOCAL_ARTIFACT_ROOT)), name="files")

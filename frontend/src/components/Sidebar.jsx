@@ -4,6 +4,7 @@ const NAV = [
   { id: "assets",      label: "Assets",      icon: "◆", disabled: false },
   { id: "alerts",      label: "Alerts",      icon: "!", disabled: false },
   { id: "detections",  label: "Detections",  icon: "◉", disabled: false },
+  { id: "live",        label: "Live",        icon: "▶", disabled: false },
   { id: "propagation", label: "Propagation", icon: "✦", disabled: false },
   { id: "lookalike",   label: "Lookalike",   icon: "◈", disabled: false },
   { id: "cases",       label: "Cases",       icon: "⬢", disabled: false },
@@ -27,8 +28,8 @@ export default function Sidebar({ active, onSelect }) {
           const state = item.disabled
             ? "cursor-not-allowed text-slate-600"
             : isActive
-            ? "bg-slate-800/60 font-medium text-slate-100"
-            : "text-slate-300 hover:bg-slate-800/40"
+              ? "bg-slate-800/60 font-medium text-slate-100"
+              : "text-slate-300 hover:bg-slate-800/40"
           return (
             <button
               key={item.id}

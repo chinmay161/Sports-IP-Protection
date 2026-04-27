@@ -7,6 +7,7 @@ import CasesPage from "./components/CasesPage.jsx"
 import DashboardPage from "./components/DashboardPage.jsx"
 import DetectionsPage from "./components/DetectionsPage.jsx"
 import LookalikePage from "./components/LookalikePage.jsx"
+import LiveStreamsPage from "./components/LiveStreamsPage.jsx"
 import PropagationPage from "./components/PropagationPage.jsx"
 import Sidebar from "./components/Sidebar.jsx"
 import SystemPage from "./components/SystemPage.jsx"
@@ -17,6 +18,7 @@ const VIEWS = {
   assets:      AssetsPage,
   cases:       CasesPage,
   detections:  DetectionsPage,
+  live:        LiveStreamsPage,
   lookalike:   LookalikePage,
   propagation: PropagationPage,
   system:      SystemPage,

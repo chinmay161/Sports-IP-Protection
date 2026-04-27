@@ -64,4 +64,8 @@ celery_app.conf.beat_schedule = {
         "task": "app.workers.scan_task.scan_all_assets",
         "schedule": crontab(minute=0, hour="*/6"),
     },
+    "monitor-live-streams": {
+        "task": "app.workers.live_stream_task.monitor_live_streams",
+        "schedule": 60.0,
+    },
 }
