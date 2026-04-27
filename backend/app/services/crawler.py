@@ -221,6 +221,17 @@ def _metadata_to_candidate(info: dict, platform: str) -> CandidateVideo | None:
     )
 
 
+def _platform_for_candidate_url(url: str) -> str:
+    host = urlparse(url).netloc.lower()
+    if "youtube." in host or "youtu.be" in host:
+        return "youtube"
+    if "tiktok." in host:
+        return "tiktok"
+    if "t.me" in host or "telegram." in host:
+        return "telegram"
+    return "web"
+
+
 def _run_ytdlp_extract(url: str, *, flat: bool = True) -> dict:
     ydl_cls = _require_ytdlp()
     options = {
@@ -430,18 +441,45 @@ class CrawlerService:
         asset_id: UUID | None = None,
     ) -> list[CandidateVideo]:
         if self.mode == "real":
+            watchlist_results = self._crawl_watchlist_urls()
             discovery_mode = get_settings().crawler_discovery_mode
             if discovery_mode == "visual":
-                return await self._crawl_visual(query, asset_id)
+                visual_results = await self._crawl_visual(query, asset_id)
+                return self._dedupe_and_shuffle(watchlist_results + visual_results)
             if discovery_mode == "hybrid":
                 search_results, visual_results = await asyncio.gather(
                     self._crawl_search(query, max_per_platform),
                     self._crawl_visual(query, asset_id),
                 )
-                return self._dedupe_and_shuffle(search_results + visual_results)
+                return self._dedupe_and_shuffle(watchlist_results + search_results + visual_results)
             if discovery_mode != "search":
                 raise CrawlerError(f"Unsupported discovery mode: {discovery_mode}")
+            search_results = await self._crawl_search(query, max_per_platform)
+            return self._dedupe_and_shuffle(watchlist_results + search_results)
         return await self._crawl_search(query, max_per_platform)
+
+    def _crawl_watchlist_urls(self) -> list[CandidateVideo]:
+        raw_urls = get_settings().crawler_watchlist_urls or ""
+        urls = [
+            url.strip()
+            for url in raw_urls.split(",")
+            if url.strip().startswith(("http://", "https://"))
+        ]
+        return [
+            _with_resolved_geo(
+                CandidateVideo(
+                    source_url=url,
+                    platform=_platform_for_candidate_url(url),
+                    channel=urlparse(url).netloc or None,
+                    view_count=None,
+                    duration_ms=None,
+                    geo_country=None,
+                    thumbnail_url=None,
+                    uploaded_at=None,
+                )
+            )
+            for url in urls
+        ]
 
     async def _crawl_search(self, query: str, max_per_platform: int) -> list[CandidateVideo]:
         result_groups = await asyncio.gather(

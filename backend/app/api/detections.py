@@ -25,6 +25,8 @@ from app.schemas.match import (
     AcknowledgeRequest,
     DmcaResponse,
     EvidenceResponse,
+    LookalikeRead,
+    LookalikeRequest,
     MatchRead,
     ScanRequest,
     ScanResponse,
@@ -32,6 +34,7 @@ from app.schemas.match import (
 )
 from app.schemas.watermark import WatermarkDetection, WatermarkScanRequest
 from app.services.evidence import EvidenceError, get_download_url as evidence_download_url
+from app.services import lookalike
 from app.services.watermark import WatermarkService, decode_watermark_key
 from app.workers.evidence_task import generate as evidence_generate
 from app.workers.scan_task import scan_asset
@@ -156,6 +159,12 @@ async def watermark_scan_endpoint(request: WatermarkScanRequest) -> WatermarkDet
     if detection is None:
         return {"matched": False}
     return detection
+
+
+@router.post("/lookalike-check", response_model=list[LookalikeRead], dependencies=[Depends(verify_token)])
+async def lookalike_check(request: LookalikeRequest) -> list[LookalikeRead]:
+    results = await lookalike.check_batch(request.channel_names)
+    return [LookalikeRead.model_validate(result, from_attributes=True) for result in results]
 
 
 @router.get("/{match_id}", response_model=MatchRead, dependencies=[Depends(verify_token)])

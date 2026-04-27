@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
+import logging
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -35,6 +37,9 @@ from app.core.config import get_settings
 from app.core import storage
 from app.models.evidence import EvidencePackage as EvidencePackageModel
 from app.models.match import Match, MatchSegment
+
+
+logger = logging.getLogger(__name__)
 
 
 class EvidenceError(Exception):
@@ -119,6 +124,10 @@ def _build_manifest(
         "confidence": match.confidence,
         "match_type": match.match_type,
         "status": match.status,
+        "geo_country": match.geo_country,
+        "view_count": match.view_count,
+        "watermark_payload": match.watermark_payload,
+        "duration_matched_ms": match.duration_matched_ms,
         "detected_at": match.detected_at.isoformat() if match.detected_at else None,
         "generated_at": generated_at.isoformat(),
         "original_asset_s3_key": match.asset.video_path if match.asset else None,
@@ -147,6 +156,59 @@ def _build_manifest(
 def _write_manifest(path: Path, manifest: dict[str, Any]) -> str:
     path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     return str(manifest["manifest_sha256"])
+
+
+def _truncate(value: str, max_length: int = 100) -> str:
+    return value if len(value) <= max_length else value[: max_length - 3] + "..."
+
+
+STATIC_INCIDENT_SUMMARY = "Automated violation detection report. See details below."
+
+
+async def _generate_incident_summary(manifest: dict[str, Any]) -> str:
+    settings = get_settings()
+    if not settings.gemini_enabled:
+        return STATIC_INCIDENT_SUMMARY
+
+    keys = [
+        "platform",
+        "source_url",
+        "confidence",
+        "match_type",
+        "severity",
+        "detected_at",
+        "geo_country",
+        "view_count",
+        "watermark_payload",
+        "duration_matched_ms",
+        "asset_title",
+    ]
+    manifest_subset = {key: manifest.get(key) for key in keys}
+    prompt = f"""You are a legal analyst at a sports rights organisation.
+Write a professional 2-3 paragraph incident summary for a
+DMCA takedown notice based on the following detection data.
+
+Use formal, court-appropriate language. Be specific about
+the platform, duration, and severity. Include the confidence
+score and what it means. End with a recommended action.
+
+Detection data:
+{json.dumps(manifest_subset, indent=2)}
+"""
+    try:
+        from app.core.ai import get_gemini_pro
+
+        gemini_pro = get_gemini_pro()
+        loop = asyncio.get_running_loop()
+        response = await loop.run_in_executor(None, lambda: gemini_pro.generate_content(prompt))
+        summary = (getattr(response, "text", None) or "").strip()
+        if not 100 <= len(summary) <= 2000:
+            logger.warning("gemini_incident_summary_invalid_length length=%s", len(summary))
+            return STATIC_INCIDENT_SUMMARY
+        return summary
+    except Exception as exc:
+        logger.warning("gemini_incident_summary_failed error=%s", _truncate(str(exc)))
+        return STATIC_INCIDENT_SUMMARY
 
 
 class _PageCountCanvas(Canvas):
@@ -244,6 +306,14 @@ def _write_pdf(path: Path, match: Match, thumbnails: list[_ThumbnailEntry], mani
     )
     story.append(badge)
     story.append(Spacer(1, 0.45 * cm))
+    summary_style = ParagraphStyle(
+        "summary",
+        parent=styles["Normal"],
+        fontSize=10,
+        leading=14,
+        spaceAfter=12,
+    )
+    story.append(Paragraph(manifest.get("incident_summary") or STATIC_INCIDENT_SUMMARY, summary_style))
 
     summary = [
         ["Asset", match.asset.title if match.asset else ""],
@@ -331,6 +401,8 @@ class EvidenceService:
 
             thumbnails = await self._prepare_thumbnails(match, work_dir)
             manifest = _build_manifest(match, thumbnails)
+            incident_summary = await _generate_incident_summary(manifest)
+            manifest["incident_summary"] = incident_summary
             manifest_path = work_dir / "manifest.json"
             manifest_sha256 = _write_manifest(manifest_path, manifest)
             pdf_path = work_dir / "evidence.pdf"
@@ -355,6 +427,7 @@ class EvidenceService:
                 pdf_s3_key=pdf_key,
                 package_hash=package_hash,
                 thumbnail_count=len(thumbnails),
+                incident_summary=incident_summary,
             )
             match.status = "resolved"
             match.resolved_at = datetime.now(UTC)

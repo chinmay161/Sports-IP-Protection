@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -42,6 +42,8 @@ class Match(Base):
     )
     alerted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    gemini_verification_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    gemini_is_sports_content: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
     asset: Mapped["Asset"] = relationship("Asset")  # noqa: F821
     segments: Mapped[list["MatchSegment"]] = relationship(

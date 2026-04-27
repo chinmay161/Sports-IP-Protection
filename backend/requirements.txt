@@ -31,6 +31,8 @@ tqdm>=4.66,<5
 git+https://github.com/openai/CLIP.git
 
 google-genai>=0.3,<2
+google-generativeai>=0.7.0
+google-cloud-videointelligence>=2.13.0
 
 # Test dependencies
 pytest>=8,<10

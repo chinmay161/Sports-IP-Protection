@@ -69,12 +69,16 @@ def test_generate_returns_correct_frame_count(tmp_path: Path, monkeypatch: pytes
         audio_path.parent.mkdir(parents=True, exist_ok=True)
         audio_path.write_bytes(b"audio")
 
+    async def fake_has_audio(_: str) -> bool:
+        return True
+
     async def fake_fingerprint_audio(_: Path) -> list[FingerprintVector]:
         return []
 
     monkeypatch.setattr(service, "_probe_duration_ms", fake_probe)
     monkeypatch.setattr(service, "_extract_frames", fake_extract_frames)
     monkeypatch.setattr(service, "_hash_frames", fake_hash_frames)
+    monkeypatch.setattr(service, "_has_audio_stream", fake_has_audio)
     monkeypatch.setattr(service, "_extract_audio", fake_extract_audio)
     monkeypatch.setattr(service, "_fingerprint_audio", fake_fingerprint_audio)
     service.settings.temp_root = tmp_path
@@ -85,6 +89,43 @@ def test_generate_returns_correct_frame_count(tmp_path: Path, monkeypatch: pytes
     assert result.audio_window_count == 0
     assert result.duration_ms == 3000
     assert [row["asset_id"] for row in collection.insert_payloads[0]] == [str(asset_id)] * 3
+
+
+def test_generate_skips_audio_for_video_without_audio_stream(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    collection = FakeCollection()
+    service = FingerprintService(collection=collection)
+    asset_id = uuid4()
+
+    async def fake_probe(_: str) -> int:
+        return 1000
+
+    async def fake_extract_frames(_: str, frames_dir: Path) -> list[Path]:
+        frame_path = frames_dir / "frame_000000.jpg"
+        frame_path.parent.mkdir(parents=True, exist_ok=True)
+        frame_path.write_bytes(b"frame")
+        return [frame_path]
+
+    async def fake_hash_frames(_: list[Path]) -> list[FingerprintVector]:
+        return [FingerprintVector(timestamp_ms=0, vector=b"\x01" * 8, kind="frame")]
+
+    async def fake_has_audio(_: str) -> bool:
+        return False
+
+    async def fail_extract_audio(_: str, audio_path: Path) -> None:
+        raise AssertionError("audio extraction should be skipped")
+
+    monkeypatch.setattr(service, "_probe_duration_ms", fake_probe)
+    monkeypatch.setattr(service, "_extract_frames", fake_extract_frames)
+    monkeypatch.setattr(service, "_hash_frames", fake_hash_frames)
+    monkeypatch.setattr(service, "_has_audio_stream", fake_has_audio)
+    monkeypatch.setattr(service, "_extract_audio", fail_extract_audio)
+    service.settings.temp_root = tmp_path
+
+    result = asyncio.run(service.generate(video_path="silent.mp4", asset_id=asset_id))
+
+    assert result.frame_count == 1
+    assert result.audio_window_count == 0
+    assert collection.insert_payloads[0][0]["type"] == "frame"
 
 
 def test_match_finds_reencoded_copy(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -271,12 +312,16 @@ def test_temp_directory_cleanup_on_success(tmp_path: Path, monkeypatch: pytest.M
     async def fake_extract_audio(_: str, audio_path: Path) -> None:
         audio_path.write_bytes(b"audio")
 
+    async def fake_has_audio(_: str) -> bool:
+        return True
+
     async def fake_fingerprint_audio(_: Path) -> list[FingerprintVector]:
         return []
 
     monkeypatch.setattr(service, "_probe_duration_ms", fake_probe)
     monkeypatch.setattr(service, "_extract_frames", fake_extract_frames)
     monkeypatch.setattr(service, "_hash_frames", fake_hash_frames)
+    monkeypatch.setattr(service, "_has_audio_stream", fake_has_audio)
     monkeypatch.setattr(service, "_extract_audio", fake_extract_audio)
     monkeypatch.setattr(service, "_fingerprint_audio", fake_fingerprint_audio)
 

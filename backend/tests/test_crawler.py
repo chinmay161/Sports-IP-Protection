@@ -10,8 +10,12 @@ from app.services.crawler import CandidateVideo, CrawlerError, CrawlerService, T
 
 
 @pytest.fixture(autouse=True)
-def clear_settings_cache():
+def clear_settings_cache(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("CRAWLER_MODE", "mock")
+    monkeypatch.setenv("CRAWLER_DISCOVERY_MODE", "hybrid")
+    monkeypatch.delenv("CRAWLER_WATCHLIST_URLS", raising=False)
     crawler.get_settings.cache_clear()
+    monkeypatch.setattr(crawler, "_default_service", CrawlerService())
     yield
     crawler.get_settings.cache_clear()
 
@@ -173,6 +177,34 @@ def test_hybrid_discovery_combines_and_deduplicates(monkeypatch: pytest.MonkeyPa
         "https://example.test/shared.mp4",
         "https://example.test/visual.mp4",
     }
+
+
+def test_real_mode_includes_watchlist_urls(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fake_search(self, query: str, max_per_platform: int):
+        return []
+
+    async def fake_visual(self, query: str, received_asset_id):
+        return []
+
+    monkeypatch.setenv(
+        "CRAWLER_WATCHLIST_URLS",
+        "https://cdn.example.test/free-video.mp4, https://www.youtube.com/watch?v=abc123XYZ90",
+    )
+    monkeypatch.setenv("CRAWLER_DISCOVERY_MODE", "hybrid")
+    crawler.get_settings.cache_clear()
+    monkeypatch.setattr(CrawlerService, "_crawl_search", fake_search)
+    monkeypatch.setattr(CrawlerService, "_crawl_visual", fake_visual)
+    service = CrawlerService(mode="real")
+
+    results = asyncio.run(service.crawl_all("filename title"))
+
+    by_url = {candidate.source_url: candidate for candidate in results}
+    assert set(by_url) == {
+        "https://cdn.example.test/free-video.mp4",
+        "https://www.youtube.com/watch?v=abc123XYZ90",
+    }
+    assert by_url["https://cdn.example.test/free-video.mp4"].platform == "web"
+    assert by_url["https://www.youtube.com/watch?v=abc123XYZ90"].platform == "youtube"
 
 
 def test_download_clip_returns_existing_file(tmp_path: Path) -> None:

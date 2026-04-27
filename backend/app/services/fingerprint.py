@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import logging
 import math
 import shutil
@@ -57,6 +58,12 @@ class FingerprintVector:
 
 
 @dataclass(slots=True)
+class FrameSample:
+    path: Path
+    timestamp_ms: int
+
+
+@dataclass(slots=True)
 class MatchPoint:
     candidate_ms: int
     stored_ms: int
@@ -88,6 +95,46 @@ class _TempWorkspace:
     ) -> None:
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, lambda: shutil.rmtree(self.path, ignore_errors=True))
+
+
+def _truncate(value: str, max_length: int = 100) -> str:
+    return value if len(value) <= max_length else value[: max_length - 3] + "..."
+
+
+async def _detect_shots(video_path: str) -> list[int]:
+    settings = get_settings()
+    if not settings.video_intelligence_enabled:
+        return []
+
+    try:
+        video_bytes = Path(video_path).read_bytes()
+
+        def _call_video_intelligence(content: bytes) -> list[int]:
+            from google.cloud import videointelligence as vi
+
+            from app.core.ai import get_video_client
+
+            client = get_video_client()
+            request = vi.AnnotateVideoRequest(
+                input_content=content,
+                features=[vi.Feature.SHOT_CHANGE_DETECTION],
+            )
+            operation = client.annotate_video(request=request)
+            result = operation.result(timeout=300)
+            midpoints: list[int] = []
+            if not result.annotation_results:
+                return midpoints
+            for shot in result.annotation_results[0].shot_annotations:
+                start_ms = shot.start_time_offset.total_seconds() * 1000
+                end_ms = shot.end_time_offset.total_seconds() * 1000
+                midpoints.append(int((start_ms + end_ms) / 2))
+            return midpoints
+
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, _call_video_intelligence, video_bytes)
+    except Exception as exc:
+        LOGGER.warning("video_intelligence_shot_detection_failed path=%s error=%s", video_path, _truncate(str(exc)))
+        return []
 
 
 class FingerprintService:
@@ -214,10 +261,26 @@ class FingerprintService:
             audio_path = workspace / "audio.wav"
             frames_dir.mkdir(parents=True, exist_ok=True)
             duration_ms = await self._probe_duration_ms(video_path)
-            frame_paths = await self._extract_frames(video_path, frames_dir)
-            frame_vectors = await self._hash_frames(frame_paths)
-            await self._extract_audio(video_path, audio_path)
-            audio_vectors = await self._fingerprint_audio(audio_path)
+            shot_midpoints = await _detect_shots(video_path)
+            if shot_midpoints:
+                timestamps_ms = shot_midpoints
+                self.logger.info("video_intelligence_shots_detected path=%s count=%s", video_path, len(timestamps_ms))
+            else:
+                timestamps_ms = list(range(0, duration_ms, FRAME_INTERVAL_MS))
+                self.logger.info("fallback_1fps_sampling path=%s count=%s", video_path, len(timestamps_ms))
+
+            extract_signature = inspect.signature(self._extract_frames)
+            if "timestamps_ms" in extract_signature.parameters:
+                frame_samples = await self._extract_frames(video_path, frames_dir, timestamps_ms=timestamps_ms)
+            else:
+                frame_samples = await self._extract_frames(video_path, frames_dir)
+            frame_vectors = await self._hash_frames(frame_samples)
+            audio_vectors: list[FingerprintVector] = []
+            if await self._has_audio_stream(video_path):
+                await self._extract_audio(video_path, audio_path)
+                audio_vectors = await self._fingerprint_audio(audio_path)
+            else:
+                self.logger.info("audio_fingerprint_skipped video_path=%s reason=no_audio_stream", video_path)
             return frame_vectors, audio_vectors, duration_ms
 
     async def _probe_duration_ms(self, video_path: str) -> int:
@@ -231,13 +294,28 @@ class FingerprintService:
 
         return await self._run_blocking(_probe)
 
-    async def _extract_frames(self, video_path: str, frames_dir: Path) -> list[Path]:
+    async def _has_audio_stream(self, video_path: str) -> bool:
+        if ffmpeg is None:
+            raise RuntimeError("ffmpeg-python is required for audio fingerprinting")
+
+        def _probe() -> bool:
+            metadata = ffmpeg.probe(video_path)
+            return any(stream.get("codec_type") == "audio" for stream in metadata.get("streams", []))
+
+        return await self._run_blocking(_probe)
+
+    async def _extract_frames(
+        self,
+        video_path: str,
+        frames_dir: Path,
+        timestamps_ms: list[int] | None = None,
+    ) -> list[Path] | list[FrameSample]:
         if ffmpeg is None:
             raise RuntimeError("ffmpeg-python is required for video fingerprinting")
 
         output_pattern = frames_dir / "frame_%06d.jpg"
 
-        def _run() -> list[Path]:
+        def _run_fixed_fps() -> list[Path]:
             (
                 ffmpeg
                 .input(video_path)
@@ -248,15 +326,38 @@ class FingerprintService:
             )
             return sorted(frames_dir.glob("frame_*.jpg"))
 
-        return await self._run_blocking(_run)
+        def _run_timestamp_samples() -> list[FrameSample]:
+            samples: list[FrameSample] = []
+            for index, timestamp_ms in enumerate(timestamps_ms or []):
+                out_path = frames_dir / f"frame_{index:06d}.jpg"
+                (
+                    ffmpeg
+                    .input(video_path, ss=max(0, timestamp_ms) / 1000)
+                    .output(str(out_path), vframes=1, **{"qscale:v": 2})
+                    .overwrite_output()
+                    .run(capture_stdout=True, capture_stderr=True)
+                )
+                if out_path.exists():
+                    samples.append(FrameSample(path=out_path, timestamp_ms=max(0, timestamp_ms)))
+            return samples
 
-    async def _hash_frames(self, frame_paths: list[Path]) -> list[FingerprintVector]:
+        if timestamps_ms is None:
+            return await self._run_blocking(_run_fixed_fps)
+        return await self._run_blocking(_run_timestamp_samples)
+
+    async def _hash_frames(self, frame_paths: list[Path] | list[FrameSample]) -> list[FingerprintVector]:
         vectors: list[FingerprintVector] = []
-        for index, frame_path in enumerate(frame_paths):
+        for index, sample in enumerate(frame_paths):
+            if isinstance(sample, FrameSample):
+                frame_path = sample.path
+                timestamp_ms = sample.timestamp_ms
+            else:
+                frame_path = sample
+                timestamp_ms = index * FRAME_INTERVAL_MS
             vector = await self._run_blocking(self._hash_single_frame, frame_path)
             vectors.append(
                 FingerprintVector(
-                    timestamp_ms=index * FRAME_INTERVAL_MS,
+                    timestamp_ms=timestamp_ms,
                     vector=vector,
                     kind="frame",
                 )
@@ -289,8 +390,15 @@ class FingerprintService:
                 .overwrite_output()
                 .run(capture_stdout=True, capture_stderr=True)
             )
+            if not audio_path.exists():
+                raise RuntimeError(f"ffmpeg audio extraction produced no file for {video_path}")
 
-        await self._run_blocking(_run)
+        try:
+            await self._run_blocking(_run)
+        except Exception as exc:
+            raise RuntimeError(
+                f"ffmpeg audio extraction failed for {video_path}: {_ffmpeg_error_details(exc)}"
+            ) from exc
 
     async def _fingerprint_audio(self, audio_path: Path) -> list[FingerprintVector]:
         return await self._run_blocking(self._fingerprint_audio_sync, audio_path)
@@ -548,6 +656,17 @@ def _search_expr(kind: str, asset_ids: list[UUID] | None) -> str:
         return base
     asset_filter = " or ".join(f'asset_id == "{asset_id}"' for asset_id in asset_ids)
     return f"{base} and ({asset_filter})"
+
+
+def _ffmpeg_error_details(exc: BaseException) -> str:
+    stderr = getattr(exc, "stderr", None)
+    if isinstance(stderr, bytes):
+        detail = stderr.decode(errors="replace").strip()
+    elif isinstance(stderr, str):
+        detail = stderr.strip()
+    else:
+        detail = str(exc)
+    return detail.splitlines()[-1] if detail else str(exc)
 
 
 def _run_from_points(asset_id: str, kind: str, points: list[MatchPoint], expected_step_ms: int) -> MatchRun:

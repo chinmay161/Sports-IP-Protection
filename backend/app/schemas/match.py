@@ -35,6 +35,8 @@ class MatchRead(BaseModel):
     detected_at: datetime
     alerted_at: datetime | None
     resolved_at: datetime | None
+    gemini_verification_reason: str | None = None
+    gemini_is_sports_content: bool | None = None
     segments: list[MatchSegmentRead] = []
     model_config = ConfigDict(from_attributes=True)
 
@@ -46,6 +48,20 @@ class AcknowledgeRequest(BaseModel):
 class ScanRequest(BaseModel):
     asset_id: UUID
     max_per_platform: int = Field(default=10, ge=1, le=50)
+
+
+class LookalikeRequest(BaseModel):
+    channel_names: list[str] = Field(..., max_length=50)
+
+
+class LookalikeRead(BaseModel):
+    channel_name: str
+    is_impersonator: bool
+    matched_brand: str | None
+    fuzzy_score: float
+    gemini_verdict: bool | None
+    gemini_reasoning: str | None
+    confidence: float
 
 
 class ScanResponse(BaseModel):

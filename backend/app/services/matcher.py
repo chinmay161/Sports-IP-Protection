@@ -3,7 +3,9 @@ import inspect
 import json
 import logging
 import os
+import re
 import shutil
+import subprocess
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -35,6 +37,16 @@ class FusedResult:
     severity: str
     watermark_payload: int | None
     fp_matches: list[FingerprintMatch]
+    gemini_verification_reason: str | None = None
+    gemini_is_sports_content: bool | None = None
+
+
+@dataclass(slots=True)
+class VerificationResult:
+    is_sports_content: bool
+    reason: str
+    confidence: str
+    raw_response: str
 
 
 def _compute_severity(confidence: float, view_count: int | None, match_type: str) -> str:
@@ -107,6 +119,87 @@ def _scan_dest() -> Path:
     return Path(root) / f"scan_{uuid4()}"
 
 
+def _truncate(value: str, max_length: int = 100) -> str:
+    return value if len(value) <= max_length else value[: max_length - 3] + "..."
+
+
+def _strip_json_fences(text: str) -> str:
+    cleaned = text.strip()
+    fenced = re.match(r"^```(?:json)?\s*(.*?)\s*```$", cleaned, flags=re.IGNORECASE | re.DOTALL)
+    return fenced.group(1).strip() if fenced else cleaned
+
+
+def _extract_frame(video_path: Path, ms: int, out_path: Path) -> None:
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    result = subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-ss",
+            f"{ms / 1000:.3f}",
+            "-i",
+            str(video_path),
+            "-vframes",
+            "1",
+            "-q:v",
+            "2",
+            str(out_path),
+        ],
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        stderr = result.stderr.decode(errors="replace").strip().splitlines()
+        raise RuntimeError(stderr[-1] if stderr else f"ffmpeg exited {result.returncode}")
+
+
+async def _verify_thumbnail(thumbnail_path: str) -> VerificationResult:
+    settings = get_settings()
+    if not settings.gemini_enabled:
+        return VerificationResult(True, "AI disabled", "low", "")
+
+    prompt = """You are a sports media content verifier.
+Analyse this image and determine if it contains sports broadcast
+footage, match highlights, stadium scenes, or sports media content.
+
+Reply in this exact JSON format with no other text:
+{
+  "is_sports_content": true or false,
+  "confidence": "high" or "medium" or "low",
+  "reason": "one sentence explanation"
+}
+"""
+    try:
+        thumbnail_bytes = Path(thumbnail_path).read_bytes()
+        image_part = {"mime_type": "image/jpeg", "data": thumbnail_bytes}
+
+        from app.core.ai import get_gemini_flash
+
+        gemini_flash = get_gemini_flash()
+        loop = asyncio.get_running_loop()
+        response = await loop.run_in_executor(
+            None,
+            lambda: gemini_flash.generate_content([prompt, image_part]),
+        )
+        raw_response = (getattr(response, "text", None) or "").strip()
+        payload = json.loads(_strip_json_fences(raw_response))
+        confidence = str(payload.get("confidence", "low")).lower()
+        if confidence not in {"high", "medium", "low"}:
+            confidence = "low"
+        return VerificationResult(
+            is_sports_content=bool(payload.get("is_sports_content", True)),
+            reason=str(payload.get("reason", ""))[:500],
+            confidence=confidence,
+            raw_response=raw_response,
+        )
+    except Exception as exc:
+        logger.warning(
+            "gemini_thumbnail_verification_failed path=%s error=%s",
+            thumbnail_path,
+            _truncate(str(exc)),
+        )
+        return VerificationResult(True, f"verification failed: {exc}", "low", "")
+
+
 async def _fingerprint_match(video_path: str, asset_ids: list[UUID] | None = None) -> list[FingerprintMatch]:
     service = FingerprintService()
     call = service.match
@@ -117,6 +210,14 @@ async def _fingerprint_match(video_path: str, asset_ids: list[UUID] | None = Non
         return await call(video_path, **kwargs)
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, lambda: call(video_path, **kwargs))
+
+
+async def _watermark_detect(video_path: str, key: bytes) -> WatermarkDetection | None:
+    try:
+        return await WatermarkService().detect_from_url(video_path, key)
+    except Exception as exc:
+        logger.warning("watermark_detection_failed path=%s error=%s", video_path, exc)
+        return None
 
 
 class MatcherService:
@@ -133,7 +234,7 @@ class MatcherService:
             key = decode_watermark_key(settings.watermark_secret_key)
 
             fp_task = _fingerprint_match(str(video_path), asset_ids)
-            wm_task = WatermarkService().detect_from_url(candidate.source_url, key)
+            wm_task = _watermark_detect(str(video_path), key)
             fp_matches, wm_detection = await asyncio.gather(fp_task, wm_task)
             allowed_assets = set(asset_ids)
             fp_matches = [match for match in fp_matches if match.asset_id in allowed_assets]
@@ -143,6 +244,33 @@ class MatcherService:
             fused = _fuse(fp_matches, wm_detection, candidate.view_count)
             if fused is None:
                 return None
+
+            if fused.severity in ("high", "critical") and fused.fp_matches:
+                segment = fused.fp_matches[0]
+                midpoint_ms = (segment.start_ms + segment.end_ms) // 2
+                thumb_path = dest / "verify_thumb.jpg"
+                try:
+                    loop = asyncio.get_running_loop()
+                    await loop.run_in_executor(None, lambda: _extract_frame(Path(video_path), midpoint_ms, thumb_path))
+                    verification = await _verify_thumbnail(str(thumb_path))
+                except Exception as exc:
+                    logger.warning(
+                        "gemini_thumbnail_extract_failed asset=%s error=%s",
+                        fused.asset_id,
+                        _truncate(str(exc)),
+                    )
+                    verification = VerificationResult(True, f"verification failed: {exc}", "low", "")
+                if not verification.is_sports_content:
+                    severity_order = ["low", "medium", "high", "critical"]
+                    current_idx = severity_order.index(fused.severity)
+                    fused.severity = severity_order[max(0, current_idx - 1)]
+                    logger.info(
+                        "gemini_severity_downgraded asset=%s reason=%s",
+                        fused.asset_id,
+                        _truncate(verification.reason),
+                    )
+                fused.gemini_verification_reason = verification.reason
+                fused.gemini_is_sports_content = verification.is_sports_content
 
             alert_id = str(uuid4())
             async with db.begin():
@@ -163,6 +291,8 @@ class MatcherService:
                     status="new",
                     geo_country=candidate.geo_country,
                     detected_at=_utcnow(),
+                    gemini_verification_reason=fused.gemini_verification_reason,
+                    gemini_is_sports_content=fused.gemini_is_sports_content,
                 )
                 db.add(match)
                 await db.flush()

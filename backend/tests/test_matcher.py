@@ -264,6 +264,50 @@ def test_scan_publishes_redis_event(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     asyncio.run(run())
 
 
+def test_scan_keeps_fingerprint_match_when_watermark_detection_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def run() -> None:
+        from app.services import matcher
+
+        asset_id = uuid4()
+        engine, Session = await _make_db(tmp_path)
+        async with Session() as db:
+            await _insert_asset(db, asset_id)
+
+            async def fake_download(self, url: str, dest: Path) -> Path:
+                path = dest / "clip.mp4"
+                path.write_bytes(b"clip")
+                return path
+
+            async def fake_match(self, video_path: str, threshold: int = 10):
+                return [_fp(asset_id, 0.85)]
+
+            async def fake_detect(self, url: str, key: bytes):
+                raise RuntimeError("ffmpeg error (see stderr output for detail)")
+
+            async def fake_publish(channel: str, message: str):
+                return 1
+
+            monkeypatch.setenv("WATERMARK_SECRET_KEY", KEY)
+            monkeypatch.setenv("SPORTS_IP_SCAN_ROOT", str(tmp_path / "scan-root"))
+            matcher.get_settings.cache_clear()
+            monkeypatch.setattr(matcher.CrawlerService, "download_clip", fake_download)
+            monkeypatch.setattr(matcher.FingerprintService, "match", fake_match)
+            monkeypatch.setattr(matcher.WatermarkService, "detect_from_url", fake_detect)
+            monkeypatch.setattr(matcher.redis_client, "publish", fake_publish)
+
+            result = await MatcherService.scan(_candidate(), [asset_id], db)
+
+            assert result is not None
+            assert result.match_type == "fingerprint"
+            assert result.confidence == 0.85
+        await engine.dispose()
+
+    asyncio.run(run())
+
+
 def test_scan_cleans_up_tmp_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     async def run() -> None:
         from app.services import matcher

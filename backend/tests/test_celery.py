@@ -6,6 +6,7 @@ def test_worker_tasks_are_registered() -> None:
     assert "app.workers.ingest_task.finalize_asset" in celery_app.tasks
     assert "app.workers.scan_task.scan_asset" in celery_app.tasks
     assert "app.workers.scan_task.scan_all_assets" in celery_app.tasks
+    assert "app.workers.visual_task.discover_visual_candidates" in celery_app.tasks
 
 
 def test_beat_schedule_uses_registered_scan_task() -> None:

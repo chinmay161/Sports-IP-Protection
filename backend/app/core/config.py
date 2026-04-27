@@ -44,6 +44,9 @@ class Settings:
     visual_phash_threshold: int
     gemini_api_key: str | None
     gemini_model: str
+    gemini_enabled: bool
+    google_application_credentials: str | None
+    video_intelligence_enabled: bool
 
 
 @lru_cache(maxsize=1)
@@ -74,4 +77,7 @@ def get_settings() -> Settings:
         visual_phash_threshold=int(os.getenv("VISUAL_PHASH_THRESHOLD", "18")),
         gemini_api_key=os.getenv("GEMINI_API_KEY"),
         gemini_model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
+        gemini_enabled=_bool_env("GEMINI_ENABLED", "true"),
+        google_application_credentials=os.getenv("GOOGLE_APPLICATION_CREDENTIALS"),
+        video_intelligence_enabled=_bool_env("VIDEO_INTELLIGENCE_ENABLED", "true"),
     )
