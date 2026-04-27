@@ -1,9 +1,8 @@
 #!/bin/bash
 # Container entrypoint — sets up demo state, then starts uvicorn.
 #
-# Why this exists: App Runner is stateless. Every container restart wipes the
-# filesystem, including our SQLite DB. We re-seed every boot so the demo URL
-# always shows consistent state. Idempotent — safe to run multiple times.
+# Idempotent — safe to run multiple times. App Runner / Render restarts wipe
+# the filesystem so we re-seed every boot.
 
 set -e
 
@@ -19,25 +18,32 @@ asyncio.run(init_db())
 "
 
 echo ">>> [entrypoint] starting uvicorn in background to seed via simulator"
-uvicorn app.main:app --host 127.0.0.1 --port 8001 &
+uvicorn app.main:app --host 127.0.0.1 --port 8001 --log-level warning &
 UVICORN_PID=$!
 
-# Wait for uvicorn to be ready
+# Wait for uvicorn to be ready by polling /health with Python (no curl needed)
+echo ">>> [entrypoint] waiting for uvicorn"
 for i in {1..30}; do
-    if curl -sf http://127.0.0.1:8001/health > /dev/null; then
-        echo ">>> [entrypoint] uvicorn ready"
+    if python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=1)" 2>/dev/null; then
+        echo ">>> [entrypoint] uvicorn ready (after $i seconds)"
         break
     fi
-    echo "    waiting for uvicorn ($i/30)..."
     sleep 1
 done
 
 echo ">>> [entrypoint] firing alert simulator to create demo asset"
 for i in 1 2 3; do
-    curl -sf -X POST http://127.0.0.1:8001/alerts/_simulate > /dev/null || true
+    python -c "
+import urllib.request
+req = urllib.request.Request('http://127.0.0.1:8001/alerts/_simulate', method='POST')
+try:
+    urllib.request.urlopen(req, timeout=5).read()
+except Exception as e:
+    print(f'WARN: simulator request {$i} failed: {e}')
+" || true
 done
 
-# Give the simulator a moment to settle
+# Give DB writes a moment to settle
 sleep 2
 
 echo ">>> [entrypoint] seeding 12 match rows"
