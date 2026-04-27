@@ -1,0 +1,51 @@
+# .dockerignore
+.git
+.gitignore
+
+# Python
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.venv
+**/venv
+**/env
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+
+# Node
+**/node_modules
+**/.vite
+**/npm-debug.log*
+
+# Build artifacts not needed in image
+**/dist
+**/build
+**/*.egg-info
+
+# Local data
+backend/sports_ip.db
+backend/.tmp
+backend/media_store
+backend/seed_*.py
+!backend/seed_matches.py
+!backend/seed_visual_candidates.py
+
+# IDE
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+
+# Environment files (we set env vars via App Runner, not bake them in)
+.env
+.env.*
+!.env.example
+
+# Docs
+*.md
+!README.md
+
+# Tests are not needed in production image (optional — comment out if you want them)
+backend/tests

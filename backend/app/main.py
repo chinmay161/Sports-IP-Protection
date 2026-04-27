@@ -73,6 +73,37 @@ LOCAL_ARTIFACT_ROOT.mkdir(parents=True, exist_ok=True)
 app.mount("/files", StaticFiles(directory=str(LOCAL_ARTIFACT_ROOT)), name="files")
 
 
+# ---------------------------------------------------------------------------
+# Serve the built React frontend in production.
+#
+# In dev, Vite serves the frontend on :5173 and proxies /api to :8001.
+# In production we ship a single container that serves both — frontend
+# static files at / and API at /alerts, /detections, etc.
+#
+# We mount this *last* so the API routes registered above take precedence.
+# ---------------------------------------------------------------------------
+import os
+from pathlib import Path
+
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+
+_FRONTEND_DIST = os.getenv("FRONTEND_DIST")
+if _FRONTEND_DIST and Path(_FRONTEND_DIST).is_dir():
+    _DIST = Path(_FRONTEND_DIST)
+    _ASSETS = _DIST / "assets"
+    if _ASSETS.is_dir():
+        app.mount("/assets", StaticFiles(directory=_ASSETS), name="assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_react_app(full_path: str):
+        # Serve specific files from dist if they exist (favicon, vite.svg, etc.)
+        candidate = _DIST / full_path
+        if full_path and candidate.is_file():
+            return FileResponse(candidate)
+        # Otherwise serve index.html — React Router handles client-side routing
+        return FileResponse(_DIST / "index.html")
+
 
 @app.get("/")
 async def read_root() -> dict[str, str]:
