@@ -99,7 +99,7 @@ export async function uploadAsset({ file, title, description }) {
   form.append("title", title)
   if (description) form.append("description", description)
 
-  const res = await fetch("/api/assets", {
+  const res = await fetch(`${BASE}/assets`, {
     method: "POST",
     body: form,
   })
@@ -295,8 +295,8 @@ export function listAssetFrames(assetId) {
 
 export function getAssetFrameImageUrl(assetId, frameId) {
   // Plain URL builder — used in <img src=...> tags directly.
-  // Goes through the Vite proxy like all our other /api calls.
-  return `/api/assets/${assetId}/frames/${frameId}/image`
+  // In dev, /api/* is proxied to FastAPI; in prod, BASE is empty.
+  return `${BASE}/assets/${assetId}/frames/${frameId}/image`
 }
 
 // ---------------------------------------------------------------------------
