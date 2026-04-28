@@ -6,6 +6,11 @@ Why a separate module:
 - Lets us add serialization, retries, or observability in a single spot later.
 - Makes testing easier: mock one module, not scattered `redis.Redis()` calls.
 
+Production resilience: if Redis isn't reachable (e.g. on a single-container
+deploy without a Redis sidecar), publish() degrades gracefully — it logs and
+returns 0 rather than crashing the request. WebSocket subscribers won't get
+real-time pushes, but every HTTP endpoint keeps working.
+
 Channels:
 - `match.created`  Published by Dev 1 (Matcher) after inserting a new match.
                    Payload is intentionally minimal; subscribers fetch the full
@@ -13,11 +18,11 @@ Channels:
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import Any, AsyncIterator
 
-import asyncio
 import redis.asyncio as redis
 
 from app.core.config import get_settings
@@ -42,9 +47,6 @@ def get_redis() -> redis.Redis:
     global _redis_client
     if _redis_client is not None:
         try:
-            # If the client's underlying connection pool was bound to a now-closed
-            # event loop, any call will fail. Cheapest detection: check the running
-            # loop matches what the client expects.
             current_loop = asyncio.get_event_loop()
             if current_loop.is_closed():
                 _redis_client = None
@@ -62,12 +64,26 @@ def get_redis() -> redis.Redis:
 
 
 async def publish(channel: str, payload: dict[str, Any]) -> int:
-    """Publish a JSON payload to a channel. Returns number of subscribers reached."""
-    client = get_redis()
-    message = json.dumps(payload, default=str)
-    delivered = await client.publish(channel, message)
-    logger.info("event_published channel=%s delivered=%d", channel, delivered)
-    return delivered
+    """Publish a JSON payload to a channel. Returns subscriber count, or 0
+    if Redis is unreachable.
+
+    We intentionally swallow Redis errors here. The HTTP request that
+    triggered the publish has already done its real work (DB write, etc.).
+    Failing real-time push is acceptable; failing the user-facing request
+    because pub/sub is down is not.
+    """
+    try:
+        client = get_redis()
+        message = json.dumps(payload, default=str)
+        delivered = await client.publish(channel, message)
+        logger.info("event_published channel=%s delivered=%d", channel, delivered)
+        return delivered
+    except Exception as exc:
+        # ConnectionError, TimeoutError, network blips — none should fail the
+        # caller. Log once at debug level (we already log the connection
+        # failures from the subscriber loop at warning level).
+        logger.debug("event_publish_failed channel=%s error=%s", channel, exc)
+        return 0
 
 
 async def subscribe(channel: str) -> AsyncIterator[dict[str, Any]]:
@@ -100,5 +116,8 @@ async def close_redis() -> None:
     """Close the module-level client on shutdown."""
     global _redis_client
     if _redis_client is not None:
-        await _redis_client.aclose()
+        try:
+            await _redis_client.aclose()
+        except Exception:
+            pass
         _redis_client = None
