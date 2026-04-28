@@ -28,7 +28,9 @@ export default function AlertFeed() {
     setSimulating(true)
     try {
       await simulateAlert()
-      // The WebSocket will deliver the new alert; no manual refresh needed.
+      // In dev, the WebSocket pushes the new alert automatically.
+      // In production we don't have Redis pub/sub, so manually refresh.
+      await refresh()
     } catch (exc) {
       console.error("simulate_failed", exc)
     } finally {
@@ -70,15 +72,14 @@ export default function AlertFeed() {
             Refresh
           </button>
 
-          {import.meta.env.DEV && (
-            <button
-              onClick={handleSimulate}
-              disabled={simulating}
-              className="rounded-md bg-cyan-500 px-3 py-1 text-xs font-semibold text-slate-950 hover:bg-cyan-400 disabled:opacity-50"
-            >
-              {simulating ? "..." : "Simulate alert"}
-            </button>
-          )}
+          <button
+            onClick={handleSimulate}
+            disabled={simulating}
+            className="rounded-md bg-cyan-500 px-3 py-1 text-xs font-semibold text-slate-950 hover:bg-cyan-400 disabled:opacity-50"
+            title="Generate a synthetic detection to demo the alert workflow"
+          >
+            {simulating ? "Simulating..." : "Simulate Detection"}
+          </button>
         </div>
       </header>
 
