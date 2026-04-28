@@ -14,6 +14,11 @@ const STATUS_DOT = {
 
 const FILTERS = ["all", "open", "acknowledged", "dmca_initiated", "resolved"]
 
+// Cycle through platforms so each "Simulate Detection" click produces a
+// different-looking alert. Weighted toward 'web' (sky-sp0rts demo target).
+const SIMULATE_PLATFORMS = ["web", "web", "youtube", "tiktok", "telegram"]
+let simulateIndex = 0
+
 export default function AlertFeed() {
   const { alerts, connectionStatus, error, replaceAlert, refresh } = useEventStream()
   const [filter, setFilter] = useState("all")
@@ -27,7 +32,9 @@ export default function AlertFeed() {
   const handleSimulate = async () => {
     setSimulating(true)
     try {
-      await simulateAlert()
+      const platform = SIMULATE_PLATFORMS[simulateIndex % SIMULATE_PLATFORMS.length]
+      simulateIndex += 1
+      await simulateAlert({ platform })
       // In dev, the WebSocket pushes the new alert automatically.
       // In production we don't have Redis pub/sub, so manually refresh.
       await refresh()

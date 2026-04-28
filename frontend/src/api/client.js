@@ -70,8 +70,14 @@ export function initiateDmca(alertId, { assetTitle, assetOwner, infringingUrl, c
   })
 }
 
-export function simulateAlert() {
-  return request(`/alerts/_simulate`, { method: "POST" })
+export function simulateAlert({ platform, confidence, matchType } = {}) {
+  const params = new URLSearchParams()
+  if (platform) params.set("platform", platform)
+  if (confidence !== undefined) params.set("confidence", String(confidence))
+  if (matchType) params.set("match_type", matchType)
+  const query = params.toString()
+  const path = query ? `/alerts/_simulate?${query}` : `/alerts/_simulate`
+  return request(path, { method: "POST" })
 }
 
 // ---------------------------------------------------------------------------

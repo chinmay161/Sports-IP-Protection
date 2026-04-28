@@ -254,7 +254,32 @@ async def post_comment(
 # Dev-only simulator (unchanged)
 # ---------------------------------------------------------------------------
 
-_SAMPLE_PLATFORMS = ["youtube", "tiktok", "telegram", "instagram", "twitter"]
+_S# Realistic-looking infringement URLs for each platform. The 'web' bucket
+# uses a typo-squatted Sky Sports clone we built specifically for the demo.
+_SAMPLE_INFRINGEMENT_URLS = {
+    "web": [
+        "https://sky-sp0rts-replays.netlify.app/match/ucl-final-2026",
+        "https://sky-sp0rts-replays.netlify.app/highlights/champions-league",
+        "https://sky-sp0rts-replays.netlify.app/replays/match-ucl-2026-04",
+    ],
+    "youtube": [
+        "https://www.youtube.com/watch?v=ucl_final_pirate",
+        "https://www.youtube.com/shorts/replay_2026_04",
+    ],
+    "tiktok": [
+        "https://www.tiktok.com/@sportsleaks/video/7234567890",
+        "https://www.tiktok.com/@matchhighlights/video/7234567891",
+    ],
+    "telegram": [
+        "https://t.me/sportsreplays/12847",
+        "https://t.me/footballhd/12848",
+    ],
+    "instagram": [
+        "https://www.instagram.com/reel/CxYz123abc/",
+    ],
+}
+
+_SAMPLE_PLATFORMS = list(_SAMPLE_INFRINGEMENT_URLS.keys())
 _SAMPLE_MATCH_TYPES = ["fingerprint", "watermark", "both"]
 
 
@@ -275,7 +300,14 @@ async def simulate_alert(
     platform: str | None = Query(default=None, description="Override platform."),
     match_type: str | None = Query(default=None, description="fingerprint | watermark | both"),
 ) -> AlertResponse:
-    """Dev-only: create a synthetic alert and fire a match.created event."""
+    """Dev-only: create a synthetic alert and fire a match.created event.
+
+    For the demo we pre-create a richer protected asset (Champions League
+    highlights, sourced from Pexels stock footage) and generate alerts with
+    realistic-looking infringement URLs — including our own typo-squatted
+    Sky Sports clone (sky-sp0rts-replays.netlify.app) as a 'web' platform
+    target.
+    """
     if not get_settings().auth_disabled:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -287,21 +319,32 @@ async def simulate_alert(
     if asset is None:
         asset = Asset(
             id=dummy_asset_id,
-            title="Demo Match Highlight (Simulator)",
-            description="Synthetic asset used by /alerts/_simulate.",
+            title="UEFA Champions League Final — Highlights",
+            description=(
+                "Stock-footage rights asset used for piracy detection demo. "
+                "Source: Pexels (Usman Abdulrasheed Gambo). "
+                "Fingerprinted via perceptual hashing, watermarked via DCT."
+            ),
             status="ready",
             fingerprint_status="ready",
             watermark_status="ready",
+            source_url="https://www.pexels.com/video/aerial-view-of-youth-soccer-match-on-green-field-31370176/",
             video_path="/dev/null",
         )
         db.add(asset)
         await db.commit()
 
-    chosen_confidence = confidence if confidence is not None else round(random.uniform(0.55, 0.99), 3)
+    chosen_confidence = confidence if confidence is not None else round(random.uniform(0.78, 0.97), 3)
     chosen_platform = platform or random.choice(_SAMPLE_PLATFORMS)
     chosen_match_type = match_type or random.choice(_SAMPLE_MATCH_TYPES)
 
-    fake_url = f"https://{chosen_platform}.example/watch/{uuid.uuid4().hex[:11]}"
+    # Pick a realistic URL for the chosen platform; fall back to a synthetic
+    # one if the platform isn't in our sample set.
+    url_pool = _SAMPLE_INFRINGEMENT_URLS.get(chosen_platform)
+    if url_pool:
+        infringing_url = random.choice(url_pool)
+    else:
+        infringing_url = f"https://{chosen_platform}.example/watch/{uuid.uuid4().hex[:11]}"
 
     alert = await create_alert(
         db=db,
@@ -309,7 +352,7 @@ async def simulate_alert(
             asset_id=UUID(dummy_asset_id),
             match_type=chosen_match_type,
             confidence=chosen_confidence,
-            infringing_url=fake_url,
+            infringing_url=infringing_url,
             platform=chosen_platform,
         ),
     )
