@@ -81,9 +81,6 @@ app.mount("/files", StaticFiles(directory=str(LOCAL_ARTIFACT_ROOT)), name="files
 # Health check endpoints — defined BEFORE the React catch-all so FastAPI
 # matches these first. /health is required for Render's health checks.
 # ---------------------------------------------------------------------------
-@app.get("/")
-async def read_root() -> dict[str, str]:
-    return {"service": "Sports IP Protection API", "status": "ok"}
 
 
 @app.get("/health")
