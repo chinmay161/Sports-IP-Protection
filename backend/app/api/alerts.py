@@ -254,7 +254,7 @@ async def post_comment(
 # Dev-only simulator (unchanged)
 # ---------------------------------------------------------------------------
 
-_S# Realistic-looking infringement URLs for each platform. The 'web' bucket
+# Realistic-looking infringement URLs for each platform. The 'web' bucket
 # uses a typo-squatted Sky Sports clone we built specifically for the demo.
 _SAMPLE_INFRINGEMENT_URLS = {
     "web": [
