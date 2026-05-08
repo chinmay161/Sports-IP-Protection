@@ -1,8 +1,27 @@
-# Sports IP Protection
+# 🛡️ Sports IP Protection
+**Protecting the Integrity of Digital Sports Media**
 
-Basic setup and run instructions for the current monorepo, plus the proposed target file structure.
+[![Demo Video](https://img.youtube.com/vi/zxlNuiUAjyU/maxresdefault.jpg)](https://youtu.be/zxlNuiUAjyU)
 
-## Prerequisites
+## 🏆 GDG Solution Challenge 
+
+### Challenge: Digital Asset Protection
+Sports organizations generate massive volumes of high-value digital media that rapidly scatter across global platforms, making it nearly impossible to track. This vast visibility gap leaves proprietary content highly vulnerable to widespread digital misappropriation, unauthorized redistribution, and intellectual property violations.
+
+### Objective
+Develop a scalable, innovative solution to identify, track, and flag unauthorized use or misappropriation of official sports media across the internet. Enable organizations to proactively authenticate their digital assets and detect anomalies in content propagation in near real-time.
+
+## ✨ Key Features
+
+- **Google AI Integration (Gemini):** Advanced AI-driven verification using Google's Gemini models for intelligent scene matching, impersonation checks, and context-aware validation to confirm if flagged content is genuinely sports-related.
+- **Lookalike & Impersonation Detection:** Specialized visual API and automated asynchronous Celery tasks to identify bad actors impersonating official sports brands, channels, or athletes.
+- **Side-by-Side Asset Comparison:** Interactive UI for analysts to visually compare original protected assets with flagged infringing content, facilitating quick and accurate case resolutions.
+- **Comprehensive Dashboard:** Dedicated System, Case, Detection, Alerts, and Asset Management pages for end-to-end IP monitoring and workflow orchestration.
+- **Multi-Modal Crawling Pipeline:** Scalable content discovery across YouTube, TikTok, Telegram, and general web platforms, supporting mock, real, and hybrid visual discovery modes.
+
+---
+
+## ⚙️ Prerequisites
 
 - Python 3.10+
 - Node.js 18+
