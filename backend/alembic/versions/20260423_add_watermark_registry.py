@@ -1,7 +1,7 @@
 """add_watermark_registry
 
 Revision ID: 20260423_watermark
-Revises:
+Revises: 20260420_initial_core
 Create Date: 2026-04-23
 """
 from alembic import op
@@ -9,7 +9,7 @@ import sqlalchemy as sa
 
 
 revision = "20260423_watermark"
-down_revision = None
+down_revision = "20260420_initial_core"
 branch_labels = None
 depends_on = None
 
