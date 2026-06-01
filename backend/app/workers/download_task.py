@@ -21,7 +21,6 @@ from app.core.config import get_settings
 from app.db.session import SessionLocal
 from app.models.asset import Asset
 from app.services.asset import refresh_aggregate_status
-from app.workers.ingest_task import ingest_asset
 
 try:
     import yt_dlp  # type: ignore
@@ -173,6 +172,7 @@ async def _download_asset_impl(asset_id: str, url: str) -> dict[str, str]:
 
     # Chain into fingerprinting with the downloaded file path.
     # Queue, don't await — ingest_asset is its own task and will publish its own events.
+    from app.workers.ingest_task import ingest_asset
     ingest_asset.delay(asset_id=asset_id, video_path=filepath)
 
     return {"asset_id": asset_id, "video_path": filepath, "download_status": "ready"}

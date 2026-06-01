@@ -17,6 +17,14 @@ def _bool_env(name: str, default: str = "false") -> bool:
     return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _milvus_uri() -> str:
+    if uri := os.getenv("MILVUS_URI"):
+        return uri
+    host = os.getenv("MILVUS_HOST", "localhost")
+    port = os.getenv("MILVUS_PORT", "19530")
+    return f"http://{host}:{port}"
+
+
 @dataclass(slots=True)
 class Settings:
     database_url: str
@@ -61,11 +69,15 @@ class Settings:
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
+    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
     return Settings(
-        database_url=os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./sports_ip.db"),
-        celery_broker_url=os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0"),
-        celery_result_backend=os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/1"),
-        milvus_uri=os.getenv("MILVUS_URI", "http://localhost:19530"),
+        database_url=os.getenv(
+            "DATABASE_URL",
+            "postgresql+asyncpg://sports_ip:sports_ip_dev@localhost:5432/sports_ip",
+        ),
+        celery_broker_url=os.getenv("CELERY_BROKER_URL", redis_url),
+        celery_result_backend=os.getenv("CELERY_RESULT_BACKEND", redis_url),
+        milvus_uri=_milvus_uri(),
         milvus_token=os.getenv("MILVUS_TOKEN"),
         milvus_collection_name=os.getenv("MILVUS_COLLECTION_NAME", "video_fingerprints"),
         milvus_required=_bool_env("MILVUS_REQUIRED"),
@@ -75,7 +87,7 @@ def get_settings() -> Settings:
         aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
         aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
         aws_region=os.getenv("AWS_REGION"),
-        s3_endpoint_url=os.getenv("S3_ENDPOINT_URL"),
+        s3_endpoint_url=os.getenv("S3_ENDPOINT_URL") or os.getenv("AWS_ENDPOINT_URL"),
         live_bucket=os.getenv("LIVE_BUCKET", "sports-ip-live"),
         cloudfront_distribution_id=os.getenv("CLOUDFRONT_DISTRIBUTION_ID"),
         cloudfront_key_pair_id=os.getenv("CLOUDFRONT_KEY_PAIR_ID"),
@@ -84,7 +96,7 @@ def get_settings() -> Settings:
         inbound_poll_interval_s=int(os.getenv("INBOUND_POLL_INTERVAL_S", "15")),
         inbound_max_segments=int(os.getenv("INBOUND_MAX_SEGMENTS", "5")),
         allow_real_cdn_requests=_bool_env("ALLOW_REAL_CDN_REQUESTS"),
-        redis_url=os.getenv("REDIS_URL", "redis://localhost:6379/2"),
+        redis_url=redis_url,
         auth_disabled=_bool_env("AUTH_DISABLED"),
         max_download_bytes=int(os.getenv("MAX_DOWNLOAD_BYTES", "2147483648")),
         geoip_database_path=os.getenv("GEOIP_DATABASE_PATH"),

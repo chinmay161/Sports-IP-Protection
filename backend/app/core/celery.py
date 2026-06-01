@@ -1,4 +1,3 @@
-import sys
 from importlib import import_module
 
 from app.core.config import get_settings
@@ -23,6 +22,7 @@ except ImportError:  # pragma: no cover - exercised only when dependency is abse
             self.kwargs = kwargs
             self.conf = _CeleryConf()
             self.tasks = {}
+            self.loader = self
 
         def task(self, *args, **kwargs):
             def decorator(func):
@@ -44,20 +44,40 @@ except ImportError:  # pragma: no cover - exercised only when dependency is abse
                 module_name = package if related_name is None else f"{package}.{related_name}"
                 import_module(module_name)
 
+        def import_default_modules(self):
+            for module_name in self.kwargs.get("include", []):
+                import_module(module_name)
+
     def crontab(*args, **kwargs):  # type: ignore[no-untyped-def]
         return {"crontab_args": args, "crontab_kwargs": kwargs}
 
 
 settings = get_settings()
 celery_app = Celery(
-    "sports_ip_protection",
-    broker=settings.celery_broker_url,
-    backend=settings.celery_result_backend,
+    "sports_ip",
+    broker=settings.redis_url,
+    backend=settings.redis_url,
+    include=[
+        "app.workers.download_task",
+        "app.workers.evidence_task",
+        "app.workers.ingest_task",
+        "app.workers.live_stream_task",
+        "app.workers.scan_task",
+        "app.workers.visual_task",
+        "app.workers.watermark_task",
+    ],
 )
-celery_app.autodiscover_tasks(["app.workers"], force=True)
 
-if sys.platform.startswith("win"):
-    celery_app.conf.update(worker_pool="solo", worker_concurrency=1)
+celery_app.conf.update(
+    task_serializer="json",
+    result_serializer="json",
+    accept_content=["json"],
+    timezone="UTC",
+    enable_utc=True,
+    worker_prefetch_multiplier=1,
+    task_acks_late=True,
+)
+celery_app.loader.import_default_modules()
 
 celery_app.conf.beat_schedule = {
     "scan-all-assets": {

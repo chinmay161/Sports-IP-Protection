@@ -68,8 +68,153 @@ services:
     volumes:
       - milvus_data:/var/lib/milvus
 
+  minio-init:
+    image: minio/mc:latest
+    container_name: sports-ip-minio-init
+    depends_on:
+      - minio
+    volumes:
+      - ./infra/minio/init.sh:/init.sh:ro
+    entrypoint: sh /init.sh
+    restart: "no"
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: sports-ip-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: sports_ip
+      POSTGRES_USER: sports_ip
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sports_ip_dev}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sports_ip"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: sports-ip-backend
+    restart: unless-stopped
+    env_file: ./backend/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://sports_ip:${POSTGRES_PASSWORD:-sports_ip_dev}@postgres:5432/sports_ip
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      MILVUS_HOST: milvus
+      MILVUS_PORT: 19530
+      MILVUS_URI: http://milvus:19530
+      AWS_ENDPOINT_URL: http://minio:9000
+      S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      S3_BUCKET_NAME: sports-ip-evidence
+      LIVE_BUCKET: sports-ip-live
+      TEMP_ROOT: /tmp/sports-ip
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      milvus:
+        condition: service_started
+      minio-init:
+        condition: service_completed_successfully
+    volumes:
+      - /tmp/sports-ip:/tmp/sports-ip
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: sports-ip-celery-worker
+    restart: unless-stopped
+    env_file: ./backend/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://sports_ip:${POSTGRES_PASSWORD:-sports_ip_dev}@postgres:5432/sports_ip
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      MILVUS_HOST: milvus
+      MILVUS_PORT: 19530
+      MILVUS_URI: http://milvus:19530
+      AWS_ENDPOINT_URL: http://minio:9000
+      S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      S3_BUCKET_NAME: sports-ip-evidence
+      LIVE_BUCKET: sports-ip-live
+      TEMP_ROOT: /tmp/sports-ip
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    volumes:
+      - /tmp/sports-ip:/tmp/sports-ip
+    command: >
+      celery -A app.core.celery worker
+      --loglevel=info
+      --pool=prefork
+      --concurrency=4
+      --queues=default,fingerprint,watermark,scan,evidence,live
+
+  celery-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: sports-ip-celery-beat
+    restart: unless-stopped
+    env_file: ./backend/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://sports_ip:${POSTGRES_PASSWORD:-sports_ip_dev}@postgres:5432/sports_ip
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      MILVUS_HOST: milvus
+      MILVUS_PORT: 19530
+      MILVUS_URI: http://milvus:19530
+      AWS_ENDPOINT_URL: http://minio:9000
+      S3_ENDPOINT_URL: http://minio:9000
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    command: >
+      celery -A app.core.celery beat
+      --loglevel=info
+      --scheduler redbeat.RedBeatScheduler
+
+  nginx:
+    image: nginx:alpine
+    container_name: sports-ip-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./frontend/dist:/usr/share/nginx/html:ro
+    depends_on:
+      - backend
+
 volumes:
   redis_data:
   etcd_data:
   minio_data:
   milvus_data:
+  postgres_data:
